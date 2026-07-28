@@ -36,3 +36,15 @@ Append entries; do not rewrite old decisions to make history look cleaner.
 - Classification: **[LOCAL]**.
 - Decision: the onboarding branch changes only setup/Codex documentation. No gameplay
   API, schema, or asset change is part of onboarding.
+
+## 2026-07-27 — Visual Studio 18 C++ workload
+
+- Status: completed after an interactive installer prompt.
+- Classification: **[LOCAL]**.
+- Decision: retain Visual Studio 18 Insiders and add its Desktop development with C++
+  workload instead of installing Visual Studio 2022 Community side-by-side.
+- Evidence: Visual Studio Setup reported `Completed install` with an empty error log;
+  MSVC `14.50.35717` is present; `C2C (VS2019).sln` then opened in a responsive
+  Visual Studio 18 Insiders window and closed normally.
+- Consequence: the repository's FASTBuild/dependency path remains authoritative; the
+  IDE workload is for editing and debugging.
