@@ -16383,4 +16383,12 @@
 		<English>Trespass</English>
 		<French>Entrée illégale</French>
 	</TEXT>
+	<TEXT>
+		<Tag>TXT_KEY_PROMOTION_SURVIVAL</Tag>
+		<English>Survival</English>
+	</TEXT>
+	<TEXT>
+		<Tag>TXT_KEY_PROMOTION_SURVIVAL_HELP</Tag>
+		<English>When defending against the Predator faction: +3 close-range Camouflage detection and an 85% base chance to escape after being badly wounded. Predator Pursuit can reduce the escape chance.</English>
+	</TEXT>
 </Civ4GameText>

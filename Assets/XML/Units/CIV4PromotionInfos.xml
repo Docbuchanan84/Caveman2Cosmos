@@ -25363,5 +25363,19 @@
 			<iInterceptChange>5</iInterceptChange>
 			<Button>,Art/Interface/Buttons/Promotions/Security5BuildUp.dds</Button>
 		</PromotionInfo>
+		<PromotionInfo>
+			<Type>PROMOTION_SURVIVAL</Type>
+			<Description>TXT_KEY_PROMOTION_SURVIVAL</Description>
+			<Help>TXT_KEY_PROMOTION_SURVIVAL_HELP</Help>
+			<Sound>AS2D_IF_LEVELUP</Sound>
+			<TechPrereq>TECH_DUMMY</TechPrereq>
+			<UnitCombats>
+				<UnitCombat>
+					<UnitCombatType>UNITCOMBAT_EXPLORER</UnitCombatType>
+					<bUnitCombat>1</bUnitCombat>
+				</UnitCombat>
+			</UnitCombats>
+			<Button>Art/Interface/Buttons/Promotions/Escape1.dds</Button>
+		</PromotionInfo>
 	</PromotionInfos>
 </Civ4PromotionInfos>

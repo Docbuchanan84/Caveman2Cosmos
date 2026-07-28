@@ -2392,6 +2392,92 @@ void CvUnit::updateAirCombat(bool bQuick)
 }
 
 namespace {
+	PromotionTypes survivalPromotion()
+	{
+		static const PromotionTypes eSurvival = (PromotionTypes)GC.getInfoTypeForString("PROMOTION_SURVIVAL", true);
+		return eSurvival;
+	}
+
+	InvisibleTypes camouflageInvisibleType()
+	{
+		static const InvisibleTypes eCamouflage = (InvisibleTypes)GC.getInfoTypeForString("INVISIBLE_CAMOUFLAGE", true);
+		return eCamouflage;
+	}
+
+	bool hasSurvivalPromotion(const CvUnit* unit)
+	{
+		const PromotionTypes eSurvival = survivalPromotion();
+		return eSurvival != NO_PROMOTION && unit != NULL && unit->isHasPromotion(eSurvival);
+	}
+
+	bool isPredatorSurvivalDefense(const CvUnit* attacker, const CvUnit* defender)
+	{
+		return attacker != NULL
+			&& attacker->getOwner() == PREDATOR_PLAYER
+			&& hasSurvivalPromotion(defender);
+	}
+
+	int survivalVisibilityFromPlot(
+		const CvPlot* spotterPlot,
+		const CvPlot* targetPlot,
+		TeamTypes eTeam,
+		InvisibleTypes eInvisible,
+		int iDistance
+	)
+	{
+		if (spotterPlot == NULL || targetPlot == NULL)
+		{
+			return 0;
+		}
+		int iBest = 0;
+
+		foreach_(const CvUnit* spotter, spotterPlot->units())
+		{
+			if (spotter->getTeam() != eTeam
+			|| spotter->isCargo()
+			|| !hasSurvivalPromotion(spotter)
+			|| !spotterPlot->canSeePlot(targetPlot, eTeam))
+			{
+				continue;
+			}
+
+			int iIntensity = spotter->visibilityIntensityTotal(eInvisible) + 3;
+			if (iDistance > 0)
+			{
+				iIntensity -= std::max(0, iDistance - spotter->visibilityIntensityRangeTotal(eInvisible));
+			}
+			else
+			{
+				iIntensity += spotter->visibilityIntensitySameTileTotal(eInvisible);
+			}
+			iBest = std::max(iBest, iIntensity);
+		}
+		return iBest;
+	}
+
+	int predatorSurvivalVisibilityIntensity(const CvUnit* target, TeamTypes eTeam, InvisibleTypes eInvisible)
+	{
+		if (target == NULL
+		|| target->getOwner() != PREDATOR_PLAYER
+		|| eInvisible != camouflageInvisibleType()
+		|| target->plot() == NULL)
+		{
+			return 0;
+		}
+
+		const CvPlot* targetPlot = target->plot();
+		int iBest = survivalVisibilityFromPlot(targetPlot, targetPlot, eTeam, eInvisible, 0);
+
+		foreach_(const CvPlot* adjacentPlot, targetPlot->adjacent())
+		{
+			iBest = std::max(
+				iBest,
+				survivalVisibilityFromPlot(adjacentPlot, targetPlot, eTeam, eInvisible, 1)
+			);
+		}
+		return iBest;
+	}
+
 	bool unitsAtWar(const TeamTypes ourTeam, const CvUnit* theirUnit)
 	{
 		return GET_TEAM(theirUnit->getTeam()).isAtWar(ourTeam);
@@ -2489,6 +2575,7 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 	int iInitialAttGGXP = GET_PLAYER(getOwner()).getCombatExperience();
 	int iInitialDefGGXP = GET_PLAYER(pDefender->getOwner()).getCombatExperience();
 	const bool bDynamicXP = GC.getGame().isModderGameOption(MODDERGAMEOPTION_IMPROVED_XP);
+	const bool bPredatorSurvivalDefense = isPredatorSurvivalDefense(this, pDefender);
 
 	getDefenderCombatValues(*pDefender, pPlot, iAttackerStrength, iAttackerFirepower, iDefenderOdds, iDefenderStrength, iAttackerDamage, iDefenderDamage, &cdDefenderDetails, pDefender);
 	int iInitialAttackerStrength = iAttackerStrength;
@@ -2596,6 +2683,12 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 	int iDefenderWithdraw = pDefender->withdrawVSOpponentProbTotal(this, pPlot);
 	int iAttackerPursuit = pursuitVSOpponentProbTotal(pDefender);
 	int iDefenderEarlyWithdraw = pDefender->earlyWithdrawTotal();
+	if (bPredatorSurvivalDefense)
+	{
+		// Survival should leave the explorer badly hurt but normally alive.
+		iDefenderWithdraw = std::max(iDefenderWithdraw, 85);
+		iDefenderEarlyWithdraw = std::max(iDefenderEarlyWithdraw, 50);
+	}
 
 	int AdjustedDefWithdrawstep1 = iDefenderWithdraw - iAttackerPursuit;
 	int AdjustedDefWithdrawstep2 = ((AdjustedDefWithdrawstep1 > 100) ? 100 : AdjustedDefWithdrawstep1);
@@ -2880,7 +2973,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 				}
 				// Current Code (Defender Attempts Withdrawal):
 
-				if  ((!pPlot->isCity(true, pDefender->getTeam()) || bSamePlot) && GC.getGame().isModderGameOption(MODDERGAMEOPTION_DEFENDER_WITHDRAW) && ((pDefender->getDamage() + iDefenderDamage) >= withdrawalHP(pDefender->getMaxHP(), iDefenderEarlyWithdraw) || bDefenderSkirmish) && !isSuicide() && iCloseCombatRoundNum > 0 && pDefender->withdrawVSOpponentProbTotal(this, pPlot) > 0)	//can not to escape at close combat round 1
+				const bool bDefenderWithdrawalEnabled =
+					GC.getGame().isModderGameOption(MODDERGAMEOPTION_DEFENDER_WITHDRAW)
+					|| bPredatorSurvivalDefense;
+
+				if  ((!pPlot->isCity(true, pDefender->getTeam()) || bSamePlot) && bDefenderWithdrawalEnabled && ((pDefender->getDamage() + iDefenderDamage) >= withdrawalHP(pDefender->getMaxHP(), iDefenderEarlyWithdraw) || bDefenderSkirmish) && !isSuicide() && (iCloseCombatRoundNum > 0 || bPredatorSurvivalDefense) && iDefenderWithdraw > 0)	// Survival can escape a predator's first lethal close-combat round.
 				{
 					if (DefenderWithdrawalRollResult < AdjustedDefWithdraw)
 					{
@@ -14454,7 +14551,10 @@ bool CvUnit::isInvisible(TeamTypes eTeam, bool bDebug, bool bCheckCargo) const
 
 	if (!GC.getGame().isOption(GAMEOPTION_COMBAT_HIDE_SEEK))
 	{
-		return getInvisibleType() != NO_INVISIBLE && !plot()->isSpotterInSight(eTeam, getInvisibleType());
+		const InvisibleTypes eInvisible = getInvisibleType();
+		return eInvisible != NO_INVISIBLE
+			&& !plot()->isSpotterInSight(eTeam, eInvisible)
+			&& predatorSurvivalVisibilityIntensity(this, eTeam, eInvisible) == 0;
 	}
 
 	if (hasAnyInvisibilityType())
@@ -14465,14 +14565,19 @@ bool CvUnit::isInvisible(TeamTypes eTeam, bool bDebug, bool bCheckCargo) const
 
 			if (hasInvisibilityType(eInvisible))
 			{
-				if (!plot()->isSpotterInSight(eTeam, eInvisible))
+				const int iSurvivalIntensity = predatorSurvivalVisibilityIntensity(this, eTeam, eInvisible);
+				if (!plot()->isSpotterInSight(eTeam, eInvisible) && iSurvivalIntensity == 0)
 				{
 					return true;
 				}
 				const int iIntensity = invisibilityIntensityTotal(eInvisible);
+				const int iVisibilityIntensity = std::max(
+					plot()->getHighestPlotTeamVisibilityIntensity(eInvisible, eTeam),
+					iSurvivalIntensity
+				);
 
 				if ((iIntensity > 0 || GC.getInvisibleInfo(eInvisible).isIntrinsic())
-				&& plot()->getHighestPlotTeamVisibilityIntensity(eInvisible, eTeam) < iIntensity)
+				&& iVisibilityIntensity < iIntensity)
 				{
 					return true;
 				}

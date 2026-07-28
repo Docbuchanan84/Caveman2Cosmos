@@ -38,6 +38,77 @@ PlayerTypes	CvUnitAI::m_cachedPlayer = NO_PLAYER;
 CvReachablePlotSet* CvUnitAI::m_cachedMissionaryPlotset = NULL;
 static PlayerTypes eCachedTargetCityPlayer = NO_PLAYER;
 static PlayerTypes eCachedAttackOddsPlayer = NO_PLAYER;
+static bool bPredatorHabitatCacheInitialized = false;
+static std::map<UnitTypes, std::vector<SpawnTypes> > predatorHabitatRules;
+
+static bool spawnEnvironmentMatches(const CvSpawnInfo& spawnInfo, const CvPlot* plot)
+{
+	if (plot->isAsPeak())
+	{
+		return spawnInfo.getPeaks();
+	}
+	if (plot->isHills() && !spawnInfo.getHills()
+	|| plot->isFlatlands() && !spawnInfo.getFlatlands())
+	{
+		return false;
+	}
+
+	const bool bHasEnvironment =
+		!spawnInfo.getTerrain().empty()
+		|| !spawnInfo.getFeatures().empty()
+		|| spawnInfo.getPeaks();
+	if (!bHasEnvironment)
+	{
+		return false;
+	}
+
+	const TerrainTypes eTerrain = plot->getTerrainType();
+	const FeatureTypes eFeature = plot->getFeatureType();
+	if (eFeature == NO_FEATURE)
+	{
+		return algo::any_of_equal(spawnInfo.getTerrain(), eTerrain);
+	}
+	return algo::any_of_equal(spawnInfo.getFeatures(), eFeature)
+		&& (
+			spawnInfo.getFeatureTerrain().empty()
+			|| algo::any_of_equal(spawnInfo.getFeatureTerrain(), eTerrain)
+		);
+}
+
+static bool isPredatorHabitat(UnitTypes eUnit, const CvPlot* plot)
+{
+	if (!bPredatorHabitatCacheInitialized)
+	{
+		for (int iI = 0; iI < GC.getNumSpawnInfos(); ++iI)
+		{
+			const CvSpawnInfo& spawnInfo = GC.getSpawnInfo((SpawnTypes)iI);
+			if (spawnInfo.getPlayer() == PREDATOR_PLAYER)
+			{
+				predatorHabitatRules[spawnInfo.getUnitType()].push_back((SpawnTypes)iI);
+				foreach_(const UnitTypes eLoopUnit, spawnInfo.getSpawnGroups())
+				{
+					predatorHabitatRules[eLoopUnit].push_back((SpawnTypes)iI);
+				}
+			}
+		}
+		bPredatorHabitatCacheInitialized = true;
+	}
+
+	const std::map<UnitTypes, std::vector<SpawnTypes> >::const_iterator it =
+		predatorHabitatRules.find(eUnit);
+	if (it == predatorHabitatRules.end())
+	{
+		return false;
+	}
+	foreach_(const SpawnTypes eSpawn, it->second)
+	{
+		if (spawnEnvironmentMatches(GC.getSpawnInfo(eSpawn), plot))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 static bool plotOpaqueInfoMatches(int iOpaqueInfo, int activityId, int iValue)
 {
@@ -89,6 +160,8 @@ void CvUnitAI::AI_clearCaches()
 
 	eCachedTargetCityPlayer = NO_PLAYER;
 	eCachedAttackOddsPlayer = NO_PLAYER;
+	predatorHabitatRules.clear();
+	bPredatorHabitatCacheInitialized = false;
 }
 
 #define	MAX_SEARCH_RANGE			25
@@ -1700,6 +1773,8 @@ void CvUnitAI::AI_animalMove()
 	PROFILE_FUNC();
 
 	const bool bReckless = GC.getGame().isOption(GAMEOPTION_ANIMAL_RECKLESS);
+	const bool bPredator = getOwner() == PREDATOR_PLAYER;
+	const int iAnimalAttackProb = GC.getHandicapInfo(GC.getGame().getHandicapType()).getAnimalAttackProb();
 
 	if (canAttack())
 	{
@@ -1710,12 +1785,26 @@ void CvUnitAI::AI_animalMove()
 				return;
 			}
 		}
+		else if (bPredator)
+		{
+			// On Noble this is about 14-15% for a healthy predator. Wounded predators recover instead.
+			const int iPredatorAttackChance = std::max(
+				1,
+				(iAnimalAttackProb + getMyAggression(iAnimalAttackProb)) / 4
+			);
+			if (!isHurt()
+			&& GC.getGame().getSorenRandNum(100, "Predator Attack") < iPredatorAttackChance
+			&& AI_anyAttack(1, 1, 0, false))
+			{
+				return;
+			}
+		}
 		// Recklessness based on animal aggression.
 		// 1% odds assessment is there to account for some small understanding of likelihood of success even in an aggressive action.
 		else if (
 			GC.getGame().getSorenRandNum(10, "Animal Attack")
 			<
-			getMyAggression(GC.getHandicapInfo(GC.getGame().getHandicapType()).getAnimalAttackProb()))
+			getMyAggression(iAnimalAttackProb))
 		{
 			if (AI_anyAttack(2, 1, 0, false))
 			{
@@ -1726,7 +1815,7 @@ void CvUnitAI::AI_animalMove()
 		else if (
 			GC.getGame().getSorenRandNum(100, "Animal Attack")
 			<
-			GC.getHandicapInfo(GC.getGame().getHandicapType()).getAnimalAttackProb())
+			iAnimalAttackProb)
 		{
 			if (AI_anyAttack(2, 60, 0, false))
 			{
@@ -16154,6 +16243,10 @@ bool CvUnitAI::AI_patrol(bool bIgnoreDanger)
 
 			if (isAnimal())
 			{
+				if (getOwner() == PREDATOR_PLAYER && isPredatorHabitat(getUnitType(), pAdjacentPlot))
+				{
+					iValue += 4000;
+				}
 				if (GC.getGame().isOption(GAMEOPTION_ANIMAL_DANGEROUS))
 				{
 					if (pAdjacentPlot->isVisibleEnemyUnit(this))

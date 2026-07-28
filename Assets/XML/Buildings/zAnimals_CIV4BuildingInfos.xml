@@ -2055,6 +2055,15 @@
 						</Has>
 					</FreePromotionCondition>
 				</FreePromoType>
+				<FreePromoType>
+					<PromotionType>PROMOTION_SURVIVAL</PromotionType>
+					<FreePromotionCondition>
+						<Has>
+							<GOMType>GOM_UNITCOMBAT</GOMType>
+							<ID>UNITCOMBAT_EXPLORER</ID>
+						</Has>
+					</FreePromotionCondition>
+				</FreePromoType>
 			</FreePromoTypes>
 			<iHappiness>1</iHappiness>
 			<UnitCombatFreeExperiences>
