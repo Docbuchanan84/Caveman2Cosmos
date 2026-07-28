@@ -63239,6 +63239,7 @@
 			</EnabledCivilizationTypes>
 			<Description>TXT_KEY_BUILDING_HUNTING_INSTRUCTIONS</Description>
 			<Civilopedia>TXT_KEY_BUILDING_HUNTING_INSTRUCTIONS_PEDIA</Civilopedia>
+			<Strategy>TXT_KEY_BUILDING_HUNTING_INSTRUCTIONS_STRATEGY</Strategy>
 			<Advisor>ADVISOR_GROWTH</Advisor>
 			<ArtDefineTag>ART_DEF_BUILDING_HUNTING_INSTRUCTIONS</ArtDefineTag>
 			<ConstructSound>AS2D_BUILD_BARRACKS</ConstructSound>

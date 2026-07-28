@@ -61,7 +61,7 @@
 	</TEXT>
 	<TEXT>
 		<Tag>TXT_KEY_CIVILIZATION_NPC_PREDATOR_PEDIA</Tag>
-		<English>Fauna Predators, or 'Predators', are the dangerous entities of the wild that would attack or prey on not only man but other species.</English>
+		<English>Fauna Predators, or 'Predators', are dangerous denizens of the wild that hunt not only humans but other species.[PARAGRAPH:2][COLOR_HIGHLIGHT_TEXT]Gameplay[COLOR_REVERT][NEWLINE][ICON_BULLET]Healthy Predators stalk their prey and make infrequent, adjacent-only attack attempts. On Noble difficulty, a healthy Predator generally has about a 14-15% chance per turn to attempt an attack against an eligible adjacent target; difficulty, experience, and the unit's aggression can modify this chance.[NEWLINE][ICON_BULLET]Wounded Predators do not initiate attacks. They instead seek safety or recover from their wounds.[NEWLINE][ICON_BULLET]Patrolling Predators favor terrain and features suitable for their species.[NEWLINE][ICON_BULLET]The Reckless Animals option overrides this cautious behavior.</English>
 		<French>Les prédateurs de la faune, ou «prédateurs», sont les entités dangereuses de la nature qui attaqueraient ou s'attaqueraient non seulement à l'homme mais à d'autres espèces.</French>
 		<German>Raubtiere sind gefährliche, wilde Bestien, die nahezu alle anderen Spezies einschließlich Menschen als ihre Beute betrachten oder zumindest bei Sichtkontakt gnadenlos angreifen.</German>
 		<Russian>[NEWLINE][TAB]Хищная фауна или «Хищники» - опасные существа дикой природы, которые могут нападать или охотиться не только на человека, но и на другие виды животных.</Russian>
