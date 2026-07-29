@@ -12205,6 +12205,10 @@
 		<Spanish>Nuestros líderes del ejército han celebrado unas olimpiadas militares para reforzar el entrenamiento y los arrestos patrios. Una unidad se ha proclamado campeona.</Spanish>
 	</TEXT>
 	<TEXT>
+		<Tag>TXT_KEY_EVENT_TRIGGER_PREDATOR_CHAMPION</Tag>
+		<English>Against all expectation, our %s3_unit has slain an attacking apex predator. Tales of the encounter spread as the survivor is hailed as a champion.</English>
+	</TEXT>
+	<TEXT>
 		<Tag>TXT_KEY_EVENT_TRIGGER_CHARIOTRY_FOUNDED_1</Tag>
 		<English>Local governor from %s2_city has presented a plan to improve our military forces. With a small donation from empire's treasury, he can hurry citizens to train chariots or to build a stable.</English>
 		<French>Un gouverneur local de %s2_city a présenté un plan pour améliorer la puissance de notre armée. Avec un petit investissement supplémentaire, il peut s'arranger avec les citoyens pour construire une [COLOR_BUILDING_TEXT]Ecurie[COLOR_REVERT] ou entraîner des [COLOR_UNIT_TEXT]Chars[COLOR_REVERT].</French>

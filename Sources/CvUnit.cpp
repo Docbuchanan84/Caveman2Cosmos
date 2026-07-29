@@ -2417,6 +2417,23 @@ namespace {
 			&& hasSurvivalPromotion(defender);
 	}
 
+	void awardPredatorSurvivalExperience(CvUnit* unit, const CvUnit* opponent, const CvPlot* plot, int iExperience100)
+	{
+		unit->changeExperience100(
+			iExperience100,
+			100 * unit->maxXPValue(opponent),
+			true,
+			plot->getOwner() == unit->getOwner(),
+			true
+		);
+	}
+
+	void awardPredatorSurvivalMutualExperience(CvUnit* predator, CvUnit* explorer, const CvPlot* plot)
+	{
+		awardPredatorSurvivalExperience(predator, explorer, plot, 50);
+		awardPredatorSurvivalExperience(explorer, predator, plot, 50);
+	}
+
 	int survivalVisibilityFromPlot(
 		const CvPlot* spotterPlot,
 		const CvPlot* targetPlot,
@@ -2547,6 +2564,7 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 	m_combatResult.bDefenderHitAttackerWithDistanceAttack = false;
 	m_combatResult.bAttackerHitDefenderWithDistanceAttack = false;
 	m_combatResult.bNeverMelee = true;
+	m_combatResult.bPredatorSurvivalEncounter = false;
 	int temporarypursuit = 0;
 	int iDefenderDodge = pDefender->dodgeVSOpponentProbTotal(this);
 	int iDefenderPrecision = pDefender->precisionVSOpponentProbTotal(this);
@@ -2576,6 +2594,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 	int iInitialDefGGXP = GET_PLAYER(pDefender->getOwner()).getCombatExperience();
 	const bool bDynamicXP = GC.getGame().isModderGameOption(MODDERGAMEOPTION_IMPROVED_XP);
 	const bool bPredatorSurvivalDefense = isPredatorSurvivalDefense(this, pDefender);
+	const bool bPredatorSurvivalHeroicVictory =
+		bPredatorSurvivalDefense
+		&& GC.getGame().getSorenRandNum(100, "Survival Heroic Counterattack") < 3;
+	bool bPredatorSurvivalExperienceHandled = false;
+	m_combatResult.bPredatorSurvivalEncounter = bPredatorSurvivalDefense;
 
 	getDefenderCombatValues(*pDefender, pPlot, iAttackerStrength, iAttackerFirepower, iDefenderOdds, iDefenderStrength, iAttackerDamage, iDefenderDamage, &cdDefenderDetails, pDefender);
 	int iInitialAttackerStrength = iAttackerStrength;
@@ -2704,7 +2727,40 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 		iAttackerHitChance = std::max(5, iAttackerOdds + ((iAttackerHitModifier * iAttackerOdds)/100));
 	}
 
-	while (true)
+	if (bPredatorSurvivalHeroicVictory)
+	{
+		// A rare moment of perfect fieldcraft lets the explorer turn the ambush on its attacker.
+		// Keep this inside the ordinary combat result pipeline so combat reporting, kill outcomes,
+		// battlefield promotions, and the selected XP system all see a normal defensive victory.
+		changeRoundCount(1);
+		pDefender->changeRoundCount(1);
+		m_combatResult.bAttackerInjured = true;
+		m_combatResult.bNeverMelee = false;
+		bAttackerHasLostNoHP = false;
+
+		const int iHeroicDamage = getHP();
+		changeDamage(iHeroicDamage, pDefender->getOwner());
+		cdAttackerDetails.iCurrHitPoints = getHP();
+
+		if (isHuman() || pDefender->isHuman())
+		{
+			CyArgsList pyArgs;
+			pyArgs.add(gDLL->getPythonIFace()->makePythonObject(&cdAttackerDetails));
+			pyArgs.add(gDLL->getPythonIFace()->makePythonObject(&cdDefenderDetails));
+			pyArgs.add(1);
+			pyArgs.add(iHeroicDamage);
+			CvEventReporter::getInstance().genericEvent("combatLogHit", pyArgs.makeFunctionArgs());
+		}
+
+		if (!bDynamicXP)
+		{
+			int iExperience = pDefender->defenseXPValue() * iInitialAttackerStrength / iInitialDefenderStrength;
+			iExperience = range(iExperience, GC.getMIN_EXPERIENCE_PER_COMBAT(), GC.getMAX_EXPERIENCE_PER_COMBAT());
+			pDefender->changeExperience(iExperience, pDefender->maxXPValue(this), true, pPlot->getOwner() == pDefender->getOwner(), true);
+		}
+		pPlot->area()->recordCombatDeath(getOwner(), getUnitType(), pDefender->getUnitType());
+	}
+	else while (true)
 	{
 		//TB Combat Mods (StrAdjperRnd) begin
 		changeRoundCount(1);
@@ -2792,7 +2848,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 						flankingStrikeCombat(pPlot, iAttackerStrength, iAttackerFirepower, iAttackerKillOdds, iDefenderDamage, pDefender);
 						bAttackerWithdrawn = true;
 
-						if (!bDynamicXP)
+						if (bPredatorSurvivalDefense)
+						{
+							bPredatorSurvivalExperienceHandled = true;
+						}
+						else if (!bDynamicXP)
 						{
 							changeExperience100(getExperiencefromWithdrawal(AdjustedAttWithdrawal) * 10 / 100, 100 * maxXPValue(pDefender), true, pPlot->getOwner() == getOwner(), true);
 
@@ -2868,7 +2928,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 						m_combatResult.bAttackerRepelled = true;
 						m_combatResult.bDeathMessaged = false;
 
-						if (!bDynamicXP)
+						if (bPredatorSurvivalDefense)
+						{
+							bPredatorSurvivalExperienceHandled = true;
+						}
+						else if (!bDynamicXP)
 						{
 							pDefender->changeExperience100(getExperiencefromWithdrawal(AdjustedRepel) * 15 / 100, 100 * pDefender->maxXPValue(this), true, pPlot->getOwner() == getOwner(), true);
 						}
@@ -2937,7 +3001,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 				{
 					if (!bBreakdown || getDamage() > combatLimit(this))
 					{
-						if (!bDynamicXP)
+						if (bPredatorSurvivalDefense)
+						{
+							bPredatorSurvivalExperienceHandled = true;
+						}
+						else if (!bDynamicXP)
 						{
 							int iWithdrawOdds = 100 - pDefender->pursuitVSOpponentProbTotal(this);
 							changeExperience100(getExperiencefromWithdrawal(iWithdrawOdds), 100 * maxXPValue(pDefender), true, pPlot->getOwner() == getOwner(), true);
@@ -2988,7 +3056,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 							m_combatResult.bDefenderWithdrawn = true;
 							m_combatResult.bDeathMessaged = false;
 
-							if (bDynamicXP)
+							if (bPredatorSurvivalDefense)
+							{
+								awardPredatorSurvivalMutualExperience(this, pDefender, pPlot);
+							}
+							else if (bDynamicXP)
 							{
 								doDynamicXP(pDefender, pPlot, iAttackerInitialDamage, iWinningOdds, iDefenderInitialDamage);
 							}
@@ -3072,7 +3144,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 								m_combatResult.bDeathMessaged = false;
 								m_combatResult.pPlot = selectWithdrawPlot(bSamePlot, pDefender).get_value_or(nullptr);
 
-								if (bDynamicXP)
+								if (bPredatorSurvivalDefense)
+								{
+									awardPredatorSurvivalMutualExperience(this, pDefender, pPlot);
+								}
+								else if (bDynamicXP)
 								{
 									doDynamicXP(pDefender, pPlot, iAttackerInitialDamage, iWinningOdds, iDefenderInitialDamage);
 								}
@@ -3196,7 +3272,11 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 				//TB Note: Place again in the successful withdrawal segment if its not already there.  This may need debugging as well based on reports.
 				flankingStrikeCombat(pPlot, iAttackerStrength, iAttackerFirepower, iAttackerKillOdds, iDefenderDamage, pDefender);
 
-				if (!bDynamicXP)
+				if (bPredatorSurvivalDefense)
+				{
+					bPredatorSurvivalExperienceHandled = true;
+				}
+				else if (!bDynamicXP)
 				{
 					int iExperience = attackXPValue() * iInitialDefenderStrength / std::max(1, iInitialAttackerStrength);
 					iExperience = range(iExperience, GC.getMIN_EXPERIENCE_PER_COMBAT(), GC.getMAX_EXPERIENCE_PER_COMBAT());
@@ -3223,7 +3303,18 @@ void CvUnit::resolveCombat(CvUnit* pDefender, CvPlot* pPlot, CvBattleDefinition&
 		iNonLethalAttackWinChance, iNonLethalDefenseWinChance,
 		iDefenderFirstStrikes, iAttackerFirstStrikes
 	);
-	if (bDynamicXP)
+	if (bPredatorSurvivalExperienceHandled)
+	{
+		if (pDefender->isDead())
+		{
+			awardPredatorSurvivalExperience(this, pDefender, pPlot, 1000);
+		}
+		else if (!isDead())
+		{
+			awardPredatorSurvivalMutualExperience(this, pDefender, pPlot);
+		}
+	}
+	if (bDynamicXP && !bPredatorSurvivalExperienceHandled)
 	{
 		doDynamicXP(pDefender, pPlot, iAttackerInitialDamage, iWinningOdds, iDefenderInitialDamage, bPromotion, bDefPromotion);
 	}
@@ -4207,6 +4298,33 @@ void CvUnit::updateCombat(CvUnit* pSelectedDefender, bool bSamePlot, bool bSteal
 				}
 			}
 			list.execute(*pDefender, getOwner(), getUnitType());
+
+			if (m_combatResult.bPredatorSurvivalEncounter
+			&& !GC.getGame().isOption(GAMEOPTION_NO_EVENTS))
+			{
+				static const PromotionTypes eLeadership =
+					(PromotionTypes)GC.getInfoTypeForString("PROMOTION_LEADERSHIP", true);
+				static const EventTriggerTypes ePredatorChampion =
+					(EventTriggerTypes)GC.getInfoTypeForString("EVENTTRIGGER_PREDATOR_CHAMPION", true);
+
+				if (ePredatorChampion != NO_EVENTTRIGGER
+				&& (eLeadership == NO_PROMOTION || !pDefender->isHasPromotion(eLeadership)))
+				{
+					GET_PLAYER(pDefender->getOwner()).initTriggeredData(
+						ePredatorChampion,
+						true,
+						-1,
+						pDefender->getX(),
+						pDefender->getY(),
+						NO_PLAYER,
+						-1,
+						NO_RELIGION,
+						NO_CORPORATION,
+						pDefender->getID(),
+						NO_BUILDING
+					);
+				}
+			}
 
 			return;
 		}

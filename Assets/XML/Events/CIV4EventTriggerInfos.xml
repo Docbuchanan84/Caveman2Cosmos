@@ -11063,6 +11063,24 @@
 		</EventTriggerInfo>
 
 		<EventTriggerInfo>
+			<Type>EVENTTRIGGER_PREDATOR_CHAMPION</Type>
+			<TriggerTexts>
+				<TriggerText>
+					<Text>TXT_KEY_EVENT_TRIGGER_PREDATOR_CHAMPION</Text>
+					<Era>NONE</Era>
+				</TriggerText>
+			</TriggerTexts>
+			<EventArt>Art/Event_Images/ChampionEvent.dds</EventArt>
+			<iPercentGamesActive>100</iPercentGamesActive>
+			<iWeight>0</iWeight>
+			<iNumUnits>1</iNumUnits>
+			<Events>
+				<Event>EVENT_CHAMPION_1</Event>
+			</Events>
+			<bRecurring>1</bRecurring>
+		</EventTriggerInfo>
+
+		<EventTriggerInfo>
 			<Type>EVENTTRIGGER_GOLD_RUSH</Type>
 			<WorldNewsTexts>
 				<Text>TXT_KEY_EVENTTRIGGER_GOLD_RUSH_1</Text>

@@ -1787,10 +1787,10 @@ void CvUnitAI::AI_animalMove()
 		}
 		else if (bPredator)
 		{
-			// On Noble this is about 14-15% for a healthy predator. Wounded predators recover instead.
+			// On Noble this is about 18-19% for a healthy predator. Wounded predators recover instead.
 			const int iPredatorAttackChance = std::max(
 				1,
-				(iAnimalAttackProb + getMyAggression(iAnimalAttackProb)) / 4
+				(iAnimalAttackProb + getMyAggression(iAnimalAttackProb)) / 4 + 4
 			);
 			if (!isHurt()
 			&& GC.getGame().getSorenRandNum(100, "Predator Attack") < iPredatorAttackChance

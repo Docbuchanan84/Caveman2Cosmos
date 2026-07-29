@@ -119,6 +119,7 @@ struct CombatResult
 	CvPlot* pPlot;
 	int iAttacksCount;
 	bool bStealthDefense;
+	bool bPredatorSurvivalEncounter;
 
 	CombatResult()
 		: bDefenderWithdrawn(false)
@@ -147,6 +148,7 @@ struct CombatResult
 		, pPlot(NULL)
 		, iAttacksCount(0)
 		, bStealthDefense(false)
+		, bPredatorSurvivalEncounter(false)
 		{}
 };
 /************************************************************************************************/
