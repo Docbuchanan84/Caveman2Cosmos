@@ -7,9 +7,11 @@ admission, economic gating, checked queue commitment, and bounded legacy broker
 growth. It also exposed an initialization defect in the unsaved water-area
 supplemental cache. A fresh-start retest reduced the resulting discrepancies
 from 16 to two and isolated the remaining first-city-founding transition. Both
-cache defects have now been repaired and rebuilt, but the latest DLL still
-requires a focused fresh-start confirmation and save/reload retest before
-Wave 2.
+cache defects have now been repaired and the second fresh-start test passed
+their reconciliation gate. That test exposed a separate tender revalidation
+defect that could expand an economically gated reservation after admission.
+The tender defect is repaired and rebuilt, but its latest DLL still requires a
+focused confirmation and save/reload retest before Wave 2.
 
 Wave 2 remains gated.
 
@@ -18,6 +20,8 @@ Wave 2 remains gated.
 - Test save: `UNIT_SPAM_FIX_TEST.CivBeyondSwordSave`
 - Fresh-start retest save:
   `UNIT_SPAM_FIX_TEST_FRESH_RETEST.CivBeyondSwordSave`
+- Second fresh-start retest save:
+  `UNIT_SPAM_FIX_TEST_FRESH_RETEST_2.CivBeyondSwordSave`
 - Save path: `My Games\Beyond The Sword\Saves\single`
 - Approximate turns played: 65
 - Structured demand records: 86, covering turns 0 through 62
@@ -183,17 +187,66 @@ deployed. Codex did not launch or advance the game.
 - Latest Release DLL SHA-256:
   `8C6151E19E314E23E470BD1C1B05CB4E99440D8A6817A90109A5010CFC963977`
 
+## Second fresh-start result and tender repair
+
+`UNIT_SPAM_FIX_TEST_FRESH_RETEST_2` covered demand turns 0 through 2 with
+the second water-cache repair. Its logs contained:
+
+- Zero assertions or fatal-error markers.
+- Zero Python errors.
+- Zero `AI_UNIT_RECONCILE` records.
+- Sixteen demand-admission records and nine fulfillment records.
+- Zero negative demand values.
+- Zero effective-supply, deficit, or pending-ceiling invariant failures.
+
+This clears the water-cache first-city-founding confirmation.
+
+The same log exposed one separate economic-tier violation. An AI hunter policy
+submitted a cumulative desired target of eleven while in financial trouble.
+Admission correctly reserved one essential hunter and gated the other ten, but
+tender finalization refreshed the economic state and expanded the outstanding
+reservation back to eleven. It committed two units before the existing queue
+cap rejected a third.
+
+This was not a counter discrepancy: it was an unauthorized increase between
+admission and fulfillment. It explains why some earlier queue rejections
+followed two commitments even when admission had allowed only one.
+
+Tender repair:
+
+- Revalidation may reduce an admitted reservation when the economy worsens or
+  supply increases.
+- Revalidation may never increase the reservation beyond the quantity actually
+  admitted during city production.
+- Withdrawn quantities now produce an explicit economic-recheck fulfillment
+  log.
+- Queue insertion remains checked and each successful commitment still moves
+  one quantity from pending to training.
+
+The tender repair passes Debug and Release DLL builds and its Debug DLL is
+deployed. Codex did not launch or advance the game.
+
+- Tender repair commit: `fb79701d3`
+- Latest Debug DLL SHA-256:
+  `062F5983DF1D7D939A404DC2C83C7F1587D0DB4D715AC681D4AEFEC02A92BFE5`
+- Latest Release DLL SHA-256:
+  `4746A2BB459DDF644D30F8A3B6EF5671C3DACD994E5EC0DDBCED666B96551911`
+
 ## Remaining runtime gate
 
 Before Wave 2:
 
-1. Start one more fresh game with the latest Debug DLL and advance at least two
-   full turns to confirm the first-city-founding repair.
-2. Load `UNIT_SPAM_FIX_TEST`, advance at least five full turns, save under a new
-   name, exit, reload that new save, and advance at least five more turns.
+1. Start one short fresh game with the latest Debug DLL and advance at least
+   three full turns to confirm that tender fulfillment never exceeds the
+   admitted economic quantity.
+2. Load `UNIT_SPAM_FIX_TEST_FRESH_RETEST_2`, advance at least five full turns,
+   save under a new name, exit, reload that new save, and advance at least five
+   more turns.
 3. Stop on any assertion, crash, stuck turn, or empty AI production.
 4. Verify the new logs contain zero `AI_UNIT_RECONCILE` records and no
    water-cache assertion.
+5. Verify each request commits no more units than its admitted outstanding
+   quantity after any economic withdrawal.
 
 After this focused retest passes, Wave 1 may clear its initialization and
 save/reload gate. A later mature multi-city test is still required before final
