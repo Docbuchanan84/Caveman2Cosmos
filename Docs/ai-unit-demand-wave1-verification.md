@@ -5,14 +5,19 @@
 Partial runtime pass. The first 65-turn playtest validated production-demand
 admission, economic gating, checked queue commitment, and bounded legacy broker
 growth. It also exposed an initialization defect in the unsaved water-area
-supplemental cache. That defect has been repaired and rebuilt, but the corrected
-DLL still requires a focused fresh-start and save/reload retest before Wave 2.
+supplemental cache. A fresh-start retest reduced the resulting discrepancies
+from 16 to two and isolated the remaining first-city-founding transition. Both
+cache defects have now been repaired and rebuilt, but the latest DLL still
+requires a focused fresh-start confirmation and save/reload retest before
+Wave 2.
 
 Wave 2 remains gated.
 
 ## Test identity
 
 - Test save: `UNIT_SPAM_FIX_TEST.CivBeyondSwordSave`
+- Fresh-start retest save:
+  `UNIT_SPAM_FIX_TEST_FRESH_RETEST.CivBeyondSwordSave`
 - Save path: `My Games\Beyond The Sword\Saves\single`
 - Approximate turns played: 65
 - Structured demand records: 86, covering turns 0 through 62
@@ -117,7 +122,7 @@ mixed into production. The current BBAI logging does not provide a symmetric
 building-completion record, so these are queue events rather than claimed
 completion totals.
 
-## Defect found and repaired
+## Water-cache defects found and repaired
 
 The BBAI log contained 16 `AI_UNIT_RECONCILE` records for negative
 `water-live` supplemental counts. They occurred when starting units moved from
@@ -145,12 +150,45 @@ deployed after the original test; no game was launched by Codex.
 - Corrected Release DLL SHA-256:
   `1436C100C71B1AA1942A76B03F9B8014DF14835603F7038CE93741A927CABBC9`
 
+The user then ran `UNIT_SPAM_FIX_TEST_FRESH_RETEST`. Its logs contained:
+
+- Zero assertion markers.
+- Zero Python errors.
+- Two `AI_UNIT_RECONCILE` records, down from 16.
+- Both discrepancies were `water-live` decrements for `UNITAI_SETTLE`, one
+  each for players 6 and 7 immediately after founding their first city.
+
+The safe-boundary cache correctly began valid and empty because neither
+settler was standing on a city plot yet. Founding its first coastal city changed
+the plot into a coastal-city plot without moving the settler through
+`CvUnit::setXY()`. The settler's later death therefore attempted to remove a
+supplemental count that city founding had never added.
+
+Second repair:
+
+- When a coastal city is initialized, units already standing on its plot are
+  added to their respective owners' valid water-area supplemental caches.
+- Temporary units and units without a valid `UnitAI` role remain excluded,
+  matching full-rebuild semantics.
+- Invalid caches still ignore incremental changes and rebuild at the next safe
+  boundary.
+- City loss continues to invalidate the cache for safe reconstruction.
+
+The second repair passes Debug and Release DLL builds and its Debug DLL is
+deployed. Codex did not launch or advance the game.
+
+- Second repair commit: `4795a4b64`
+- Latest Debug DLL SHA-256:
+  `B0408A603CF372F8641930EA2D82051E4FBA44445C1D693471ED8F7906A2C71F`
+- Latest Release DLL SHA-256:
+  `8C6151E19E314E23E470BD1C1B05CB4E99440D8A6817A90109A5010CFC963977`
+
 ## Remaining runtime gate
 
 Before Wave 2:
 
-1. Start a fresh game with the corrected Debug DLL and advance at least two full
-   turns.
+1. Start one more fresh game with the latest Debug DLL and advance at least two
+   full turns to confirm the first-city-founding repair.
 2. Load `UNIT_SPAM_FIX_TEST`, advance at least five full turns, save under a new
    name, exit, reload that new save, and advance at least five more turns.
 3. Stop on any assertion, crash, stuck turn, or empty AI production.
