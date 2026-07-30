@@ -623,11 +623,27 @@ void CvContractBroker::finalizeProductionDemands(std::vector<bool>& tenderUsed)
 		const AIUnitRoleSupply kBase = kOwner.AI_getUnitDemandBaseSupply(kDemand.kKey);
 		const int iBaseSupply = kBase.iExisting + kBase.iTraining;
 		const int iAllowedDesired = kOwner.AI_getAllowedUnitDemandDesired(kDemand.kTarget, kDemand.iMaxUnitSpendingPercent);
-		const int iRevalidatedOutstanding = std::max(0, iAllowedDesired - iBaseSupply);
+		// Revalidation may withdraw admitted production if the economy or supply
+		// has worsened.  It must not enlarge a reservation after admission merely
+		// because the economy has improved later in the turn.
+		const int iRevalidatedOutstanding = std::min(
+			kDemand.iOutstandingQuantity,
+			std::max(0, iAllowedDesired - iBaseSupply)
+		);
 		if (iRevalidatedOutstanding != kDemand.iOutstandingQuantity)
 		{
+			const int iWithdrawnQuantity = kDemand.iOutstandingQuantity - iRevalidatedOutstanding;
 			changeOutstandingProduction(kDemand.kKey, iRevalidatedOutstanding - kDemand.iOutstandingQuantity);
 			kDemand.iOutstandingQuantity = iRevalidatedOutstanding;
+			if (gCityLogLevel >= 2 && gPlayerLogLevel >= 1)
+			{
+				logContractBroker(1,
+					"AI_UNIT_DEMAND_FULFILL requestId=%d result=%d withdrawn=%d pending=%d",
+					kDemand.iRequestId,
+					(int)AI_UNIT_DEMAND_FULFILLMENT_ECONOMIC_GATE,
+					iWithdrawnQuantity,
+					kDemand.iOutstandingQuantity);
+			}
 		}
 
 		while (kDemand.iOutstandingQuantity > 0)
