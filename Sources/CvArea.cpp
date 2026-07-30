@@ -1058,6 +1058,11 @@ void CvArea::changeNumTrainAIUnits(PlayerTypes eIndex1, UnitAITypes eIndex2, int
 	FASSERT_BOUNDS(0, NUM_UNITAI_TYPES, eIndex2);
 	m_aaiNumTrainAIUnits[eIndex1][eIndex2] += iChange;
 	FASSERT_NOT_NEGATIVE(getNumTrainAIUnits(eIndex1, eIndex2));
+	if (getNumTrainAIUnits(eIndex1, eIndex2) < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=area-training cached=%d action=rebuild", (int)eIndex1, getID(), (int)eIndex2, getNumTrainAIUnits(eIndex1, eIndex2));
+		GET_PLAYER(eIndex1).AI_noteUnitRecalcNeeded();
+	}
 }
 
 
@@ -1075,6 +1080,11 @@ void CvArea::changeNumAIUnits(PlayerTypes eIndex1, UnitAITypes eIndex2, int iCha
 	FASSERT_BOUNDS(0, NUM_UNITAI_TYPES, eIndex2);
 	m_aaiNumAIUnits[eIndex1][eIndex2] += iChange;
 	FASSERT_NOT_NEGATIVE(getNumAIUnits(eIndex1, eIndex2));
+	if (getNumAIUnits(eIndex1, eIndex2) < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=area-live cached=%d action=rebuild", (int)eIndex1, getID(), (int)eIndex2, getNumAIUnits(eIndex1, eIndex2));
+		GET_PLAYER(eIndex1).AI_noteUnitRecalcNeeded();
+	}
 }
 
 

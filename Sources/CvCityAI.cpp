@@ -333,7 +333,11 @@ void CvCityAI::AI_doContractFloatingDefenders()
 			getY(),
 			NULL,
 			eFloatingDefenderUnitAI,
-			iRequiredStrength);
+			iRequiredStrength,
+			NULL,
+			MAX_INT,
+			CONTRACT_WORK_REQUEST_TRANSIENT_CITY_PRODUCTION,
+			getID());
 	}
 	else
 	{
@@ -922,12 +926,19 @@ void CvCityAI::AI_chooseProduction()
 
 	int iBuildUnitProb = AI_buildUnitProb();
 
-	int iWorkersInArea = player.AI_totalAreaUnitAIs(pArea, UNITAI_WORKER);
+	int iWorkersInArea = player.AI_getUnitRoleSupply(UNITAI_WORKER, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply;
 	int iNeededWorkersInArea = player.AI_neededWorkers(pArea);
 	// Sea worker need independent of whether water area is militarily relevant
 	int iNeededSeaWorkers = (bMaybeWaterArea) ? AI_neededSeaWorkers() : 0;
 	const int iWorkersNeeded = AI_getWorkersNeeded() - getNumWorkers();
-	int iExistingSeaWorkers = waterArea(true) ? player.AI_totalWaterAreaUnitAIs(waterArea(true), UNITAI_WORKER_SEA) : 0;
+	int iExistingSeaWorkers = waterArea(true) ? player.AI_getUnitRoleSupply(UNITAI_WORKER_SEA, AI_UNIT_DEMAND_WATER_AREA, waterArea(true)).iEffectiveSupply : 0;
+
+	AIUnitDemandTarget kWorkerDemand;
+	kWorkerDemand.setDesiredThrough(AI_UNIT_DEMAND_EMERGENCY, 1);
+	kWorkerDemand.setDesiredThrough(AI_UNIT_DEMAND_ESSENTIAL, std::max(1, iNeededWorkersInArea));
+
+	AIUnitDemandTarget kSeaWorkerDemand;
+	kSeaWorkerDemand.setDesiredThrough(AI_UNIT_DEMAND_ESSENTIAL, std::max(1, iNeededSeaWorkers));
 
 	const int iSpreadUnitThreshold = (
 			1000 + (bLandWar ? 800 - 10 * iWarSuccessRatio : 0)
@@ -952,7 +963,7 @@ void CvCityAI::AI_chooseProduction()
 		}
 	}
 	int iNumWaterAreaCitySites = (pWaterSettlerArea == NULL) ? 0 : player.AI_getNumAdjacentAreaCitySites(pWaterSettlerArea->getID(), getArea(), iWaterAreaBestFoundValue);
-	int iNumSettlers = player.AI_totalUnitAIs(UNITAI_SETTLE) + player.getContractBroker().numRequestsOutstanding(UNITAI_SETTLE);
+	int iNumSettlers = player.AI_getUnitRoleSupply(UNITAI_SETTLE, AI_UNIT_DEMAND_PLAYER, NULL).iEffectiveSupply;
 
 	bool bIsCapitalArea = false;
 	int iNumCapitalAreaCities = 0;
@@ -997,6 +1008,8 @@ void CvCityAI::AI_chooseProduction()
 			}
 		}
 	}
+	AIUnitDemandTarget kSettlerDemand;
+	kSettlerDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iMaxSettlers);
 	int iEconomyFlags = 0;
 	int iEconomyFlagBits = 0;
 
@@ -1085,8 +1098,11 @@ void CvCityAI::AI_chooseProduction()
 	//TB Note: min 1 hunter goes under the priority level of settling initiation because this is exploitable with ambushers (or just plain bad luck for the hunters which is not unlikely).  Destroy all hunters and you cripple growth.
 	//Koshling - made having at least 1 hunter a much higher priority
 	const int iNeededHunters = player.AI_neededHunters(pArea);
-	const int iOwnedHunters = player.AI_totalAreaUnitAIs(pArea, UNITAI_HUNTER);
+	const int iOwnedHunters = player.AI_getUnitRoleSupply(UNITAI_HUNTER, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply;
 	const int iHunterDeficitPercent = (iNeededHunters <= iOwnedHunters) ? 0 : (iNeededHunters - iOwnedHunters) * 100 / iNeededHunters;
+	AIUnitDemandTarget kHunterDemand;
+	kHunterDemand.setDesiredThrough(AI_UNIT_DEMAND_ESSENTIAL, std::min(1, iNeededHunters));
+	kHunterDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, iNeededHunters);
 
 	const int iLowlimitProductionRank = (player.getNumCities() + 1) * 2 / 3;
 
@@ -1100,7 +1116,7 @@ void CvCityAI::AI_chooseProduction()
 	const int iMaxSeeInvisibleUnits = 2 + player.getNumCities() + intSqrt(player.getNumCities() * intSqrt(eCurrentEra));
 
 	//	Koshling - protect against broken AI counts, which is known to happen occasionally
-	int iNumSpies = std::max(0, player.AI_totalAreaUnitAIs(pArea, UNITAI_SPY));
+	int iNumSpies = std::max(0, player.AI_getUnitRoleSupply(UNITAI_SPY, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply);
 	int iNeededSpies = iNumCitiesInArea / 3;
 	iNeededSpies += isCapital() ? 1 : 0;
 	// K-Mod
@@ -1108,6 +1124,16 @@ void CvCityAI::AI_chooseProduction()
 	{
 		iNeededSpies *= 2;
 	}
+	AIUnitDemandTarget kSpyDemand;
+	kSpyDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iNeededSpies);
+
+	AIUnitDemandTarget kExplorerDemand;
+	kExplorerDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, player.AI_neededExplorers(pArea));
+	AIUnitDemandTarget kSeaExplorerDemand;
+	kSeaExplorerDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, pWaterArea == NULL ? 0 : player.AI_neededExplorers(pWaterArea));
+
+	AIUnitDemandTarget kInfiltratorDemand;
+	kInfiltratorDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, 1);
 
 	int iMaxUnitSpending = AI_evaluateMaxUnitSpending(); 
 	
@@ -1720,7 +1746,7 @@ void CvCityAI::AI_chooseProduction()
 			return;
 		}
 		LOG_BBAI_CITY(2, ("#7 City %S, Will Start to build hunters (iHunterDeficitPercent : %d). For the moment : Owned : %d, Needed : %d", getName().GetCString(), iHunterDeficitPercent, iOwnedHunters, iNeededHunters));
-		if (AI_chooseUnit("no hunters at all", UNITAI_HUNTER))
+		if (AI_chooseUnitForDemand("no hunters at all", AI_UNIT_DEMAND_POLICY_HUNTER, UNITAI_HUNTER, kHunterDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -1734,7 +1760,7 @@ void CvCityAI::AI_chooseProduction()
 			if (iNeededWorkersInArea > iWorkersInArea && iProductionRank <= iLowlimitProductionRank)
 			{
 				LOG_BBAI_CITY(2, ("#8 City %S, Will Start to build workers. For the moment : InArea : %d, Needed : %d", getName().GetCString(), iWorkersInArea, iNeededWorkersInArea));
-				if (AI_chooseUnit("no workers", UNITAI_WORKER, -1, -1, CITY_NO_WORKERS_WORKER_PRIORITY))
+				if (AI_chooseUnitForDemand("no workers", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea, -1, CITY_NO_WORKERS_WORKER_PRIORITY))
 				{
 					return;
 				}
@@ -1743,7 +1769,7 @@ void CvCityAI::AI_chooseProduction()
 
 			if (!bWaterDanger && iNeededSeaWorkers > iExistingSeaWorkers && getPopulation() < 3)
 			{
-				if (AI_chooseUnit("no sea workers", UNITAI_WORKER_SEA, -1, -1, CITY_NO_WORKERS_WORKER_PRIORITY))
+				if (AI_chooseUnitForDemand("no sea workers", AI_UNIT_DEMAND_POLICY_SEA_WORKER, UNITAI_WORKER_SEA, kSeaWorkerDemand, AI_UNIT_DEMAND_WATER_AREA, waterArea(true), -1, CITY_NO_WORKERS_WORKER_PRIORITY))
 				{
 					return;
 				}
@@ -1751,7 +1777,7 @@ void CvCityAI::AI_chooseProduction()
 
 			if (!bChooseWorker && iWorkersNeeded > 1 && getPopulation() > 1)
 			{
-				if (AI_chooseUnit("secondary worker", UNITAI_WORKER))
+				if (AI_chooseUnitForDemand("secondary worker", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					return;
 				}
@@ -1848,7 +1874,7 @@ void CvCityAI::AI_chooseProduction()
 		if (!bWaterDanger && iNeededSeaWorkers > 0 && iExistingSeaWorkers == 0)
 		{
 			// Build workboat first since it doesn't stop growth
-			if (AI_chooseUnit("capital with no sea workers", UNITAI_WORKER_SEA))
+			if (AI_chooseUnitForDemand("capital with no sea workers", AI_UNIT_DEMAND_POLICY_SEA_WORKER, UNITAI_WORKER_SEA, kSeaWorkerDemand, AI_UNIT_DEMAND_WATER_AREA, waterArea(true)))
 			{
 				return;
 			}
@@ -1859,7 +1885,7 @@ void CvCityAI::AI_chooseProduction()
 		// Fuyu: anything bigger than 0 is ok
 		&& AI_totalBestBuildValue(pArea) > 0)
 		{
-			if (AI_chooseUnit("capital with no workers", UNITAI_WORKER))
+			if (AI_chooseUnitForDemand("capital with no workers", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 			{
 				return;
 			}
@@ -1868,7 +1894,7 @@ void CvCityAI::AI_chooseProduction()
 		// Sea Workers
 		else if (!bWaterDanger && getPopulation() <= 4 && iNeededSeaWorkers > 0
 		&& happyLevel() - unhappyLevel(1) > 0 && iExistingSeaWorkers == 0
-		&& AI_chooseUnit("capital worker", UNITAI_WORKER_SEA))
+		&& AI_chooseUnitForDemand("capital worker", AI_UNIT_DEMAND_POLICY_SEA_WORKER, UNITAI_WORKER_SEA, kSeaWorkerDemand, AI_UNIT_DEMAND_WATER_AREA, waterArea(true)))
 		{
 			return;
 		}
@@ -1909,7 +1935,7 @@ void CvCityAI::AI_chooseProduction()
 					if (iDangerValue < 5 && bFinancialTrouble && iWorkersInArea < 5 * iNeededWorkersInArea && iWorkersNeeded > 0
 					&& (getPopulation() > 1 || GC.getGame().getGameTurn() - getGameTurnAcquired() > 15 * iHammerCostPercent / 100))
 					{
-						if (!bChooseWorker && AI_chooseUnit("worker needed", UNITAI_WORKER))
+						if (!bChooseWorker && AI_chooseUnitForDemand("worker needed", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 						{
 							return;
 						}
@@ -1929,7 +1955,7 @@ void CvCityAI::AI_chooseProduction()
 				if (iDangerValue < 6 && iWorkersInArea < (2 * iNeededWorkersInArea + 2) / 3 && iWorkersNeeded > 0
 				&& (getPopulation() > 1 || GC.getGame().getGameTurn() - getGameTurnAcquired() > 15 * iHammerCostPercent / 100))
 				{
-					if (!bChooseWorker && AI_chooseUnit("worker needed 2", UNITAI_WORKER))
+					if (!bChooseWorker && AI_chooseUnitForDemand("worker needed 2", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 					{
 						return;
 					}
@@ -1972,7 +1998,7 @@ void CvCityAI::AI_chooseProduction()
 						return;
 					}
 				}
-				if (AI_chooseUnit("settler needed", UNITAI_SETTLE))
+				if (AI_chooseUnitForDemand("settler needed", AI_UNIT_DEMAND_POLICY_SETTLER, UNITAI_SETTLE, kSettlerDemand, AI_UNIT_DEMAND_PLAYER, NULL))
 				{
 					return;
 				}
@@ -1988,9 +2014,9 @@ void CvCityAI::AI_chooseProduction()
 		return;
 	}
 	//#14b, Check for at least one explorer
-	if (player.AI_totalAreaUnitAIs(pArea, UNITAI_EXPLORE) == 0)
+	if (player.AI_getUnitRoleSupply(UNITAI_EXPLORE, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply == 0)
 	{
-		if (AI_chooseUnit("need explorers", UNITAI_EXPLORE))
+		if (AI_chooseUnitForDemand("need explorers", AI_UNIT_DEMAND_POLICY_EXPLORE, UNITAI_EXPLORE, kExplorerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2018,7 +2044,7 @@ void CvCityAI::AI_chooseProduction()
 		{
 			return;
 		}
-		if (AI_chooseUnit("#16 not much hunters", UNITAI_HUNTER))
+		if (AI_chooseUnitForDemand("#16 not much hunters", AI_UNIT_DEMAND_POLICY_HUNTER, UNITAI_HUNTER, kHunterDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2231,8 +2257,8 @@ void CvCityAI::AI_chooseProduction()
 
 			if (iOdds > -1)
 			{
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_EXPLORE_SEA) == 0
-					&& AI_chooseUnit("sea explorer", UNITAI_EXPLORE_SEA, iOdds))
+				if (player.AI_getUnitRoleSupply(UNITAI_EXPLORE_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply == 0
+					&& AI_chooseUnitForDemand("sea explorer", AI_UNIT_DEMAND_POLICY_EXPLORE_SEA, UNITAI_EXPLORE_SEA, kSeaExplorerDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea, iOdds))
 				{
 					return;
 				}
@@ -2275,7 +2301,7 @@ void CvCityAI::AI_chooseProduction()
 		if (!bChooseWorker && !bInhibitUnits && (!bDefenseWar || iWarSuccessRatio >= -30) && iWorkersInArea < iNeededWorkersInArea
 		&& (getPopulation() > 3 || iProductionRank < (player.getNumCities() + 1) / 2))
 		{
-			if (AI_chooseUnit("no danger workers", UNITAI_WORKER))
+			if (AI_chooseUnitForDemand("no danger workers", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 			{
 				return;
 			}
@@ -2319,7 +2345,9 @@ void CvCityAI::AI_chooseProduction()
 		}
 
 		const int iOdds = iBuildUnitProb + iDangerValue - (iWarSuccessRatio < -3 ? iWarSuccessRatio / 3 : 0);
-		if (AI_chooseLeastRepresentedUnit("extra defense", defensiveTypes, iOdds))
+		if (AI_chooseLeastRepresentedUnit(
+			"extra defense", defensiveTypes, iOdds,
+			bDanger ? AI_UNIT_DEMAND_EMERGENCY : AI_UNIT_DEMAND_STRATEGIC))
 		{
 			return;
 		}
@@ -2330,7 +2358,7 @@ void CvCityAI::AI_chooseProduction()
 	//#29 Extra Workers for large city, if no danger 
 	if (!bInhibitUnits && !bChooseWorker && iDangerValue < 7 && iWorkersInArea < iNeededWorkersInArea && (!bDefenseWar || iWarSuccessRatio >= -50) && iProductionRank < (player.getNumCities() + 1) / 2)
 	{
-		if (AI_chooseUnit("no danger large city extra worker", UNITAI_WORKER))
+		if (AI_chooseUnitForDemand("no danger large city extra worker", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2345,7 +2373,7 @@ void CvCityAI::AI_chooseProduction()
 	}
 
 	//#30 Extra Sea Workers, if no danger 
-	if ((m_iRequestedUnit <= MAX_REQUESTEDUNIT_PER_CITY) && !bInhibitUnits && !bWaterDanger && (!bDefenseWar || iWarSuccessRatio >= -30) && iNeededSeaWorkers > iExistingSeaWorkers && AI_chooseUnit("no danger extra sea worker", UNITAI_WORKER_SEA))
+	if ((m_iRequestedUnit <= MAX_REQUESTEDUNIT_PER_CITY) && !bInhibitUnits && !bWaterDanger && (!bDefenseWar || iWarSuccessRatio >= -30) && iNeededSeaWorkers > iExistingSeaWorkers && AI_chooseUnitForDemand("no danger extra sea worker", AI_UNIT_DEMAND_POLICY_SEA_WORKER, UNITAI_WORKER_SEA, kSeaWorkerDemand, AI_UNIT_DEMAND_WATER_AREA, waterArea(true)))
 	{
 		return;
 	}
@@ -2355,7 +2383,7 @@ void CvCityAI::AI_chooseProduction()
 	m_iTempBuildPriority--;
 
 	//#31 Infiltrator Prio2, when enough cities builded                  // Does rival cities exist?
-	if ((m_iRequestedUnit <= MAX_REQUESTEDUNIT_PER_CITY) && !bInhibitUnits && bIsCapitalArea && pArea->getNumCities() > iNumCapitalAreaCities && player.AI_totalAreaUnitAIs(pArea, UNITAI_INFILTRATOR) < 1 && AI_chooseUnit("Infiltrator needed", UNITAI_INFILTRATOR))
+	if ((m_iRequestedUnit <= MAX_REQUESTEDUNIT_PER_CITY) && !bInhibitUnits && bIsCapitalArea && pArea->getNumCities() > iNumCapitalAreaCities && player.AI_getUnitRoleSupply(UNITAI_INFILTRATOR, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply < 1 && AI_chooseUnitForDemand("Infiltrator needed", AI_UNIT_DEMAND_POLICY_INFILTRATOR, UNITAI_INFILTRATOR, kInfiltratorDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 	{
 		// Harass first; eventually find a way to vary the amount of desired infiltrators by leader personality
 		// This is enough of a trigger. Once introduced they will expand themselves if needed and possible.
@@ -2491,7 +2519,7 @@ void CvCityAI::AI_chooseProduction()
 		{
 			return;
 		}
-		if (AI_chooseUnit("less than half the required hunters", UNITAI_HUNTER))
+		if (AI_chooseUnitForDemand("less than half the required hunters", AI_UNIT_DEMAND_POLICY_HUNTER, UNITAI_HUNTER, kHunterDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2583,7 +2611,7 @@ void CvCityAI::AI_chooseProduction()
 			{
 				if (getPopulation() > 2 || GC.getGame().getGameTurn() - getGameTurnAcquired() > 15 * iHammerCostPercent / 100)
 				{
-					if (!bChooseWorker && AI_chooseUnit("worker for established city", UNITAI_WORKER))
+					if (!bChooseWorker && AI_chooseUnitForDemand("worker for established city", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 					{
 						return;
 					}
@@ -2640,7 +2668,7 @@ void CvCityAI::AI_chooseProduction()
 	if ((bMassing || !bLandWar) && iDangerValue < 4 && !bFinancialTrouble)
 	{
 		const int iNeededExplorers = player.AI_neededExplorers(pArea);
-		const int iExplorerDeficitPercent = (iNeededExplorers == 0) ? 0 : (iNeededExplorers - player.AI_totalAreaUnitAIs(pArea, UNITAI_EXPLORE)) * 100 / iNeededExplorers;
+		const int iExplorerDeficitPercent = (iNeededExplorers == 0) ? 0 : (iNeededExplorers - player.AI_getUnitRoleSupply(UNITAI_EXPLORE, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply) * 100 / iNeededExplorers;
 		if (iExplorerDeficitPercent >= iHunterDeficitPercent && iExplorerDeficitPercent > 0)
 		{
 			// If we are just pumping out explorer units and having them die fast go for EXP giving buildings first
@@ -2648,7 +2676,7 @@ void CvCityAI::AI_chooseProduction()
 			{
 				return;
 			}
-			if (AI_chooseUnit("need explorers", UNITAI_EXPLORE))
+			if (AI_chooseUnitForDemand("need explorers", AI_UNIT_DEMAND_POLICY_EXPLORE, UNITAI_EXPLORE, kExplorerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 			{
 				return;
 			}
@@ -2662,7 +2690,7 @@ void CvCityAI::AI_chooseProduction()
 				return;
 			}
 
-			if (AI_chooseUnit("need hunters", UNITAI_HUNTER))
+			if (AI_chooseUnitForDemand("need hunters", AI_UNIT_DEMAND_POLICY_HUNTER, UNITAI_HUNTER, kHunterDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 			{
 				return;
 			}
@@ -2678,7 +2706,10 @@ void CvCityAI::AI_chooseProduction()
 		panicDefenderTypes.push_back(std::make_pair(UNITAI_COLLATERAL, 100));
 		panicDefenderTypes.push_back(std::make_pair(UNITAI_ATTACK, 100));
 
-		if (AI_chooseLeastRepresentedUnit("panic defender", panicDefenderTypes, (bGetBetterUnits ? 40 : 60) - iWarSuccessRatio / 3))
+		if (AI_chooseLeastRepresentedUnit(
+			"panic defender", panicDefenderTypes,
+			(bGetBetterUnits ? 40 : 60) - iWarSuccessRatio / 3,
+			bDanger ? AI_UNIT_DEMAND_EMERGENCY : AI_UNIT_DEMAND_STRATEGIC))
 		{
 			return;
 		}
@@ -2728,7 +2759,7 @@ void CvCityAI::AI_chooseProduction()
 	//#46 Workers (again), it City doesn't have enough Hammer                                                                  //Calvitix test to reduce workers
 	if (!bChooseWorker && !bInhibitUnits && iDangerValue < 8 && (!bLandWar || iWarSuccessRatio >= -30) && 0 < iNeededWorkersInArea && iWorkersNeeded > 1 && (getPopulation() > 1 || GC.getGame().getGameTurn() - getGameTurnAcquired() > 15 * iHammerCostPercent / 100))
 	{
-		if (AI_chooseUnit("established city needs more workers", UNITAI_WORKER))
+		if (AI_chooseUnitForDemand("established city needs more workers", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2819,7 +2850,7 @@ void CvCityAI::AI_chooseProduction()
 			if ((AI_countNumBonuses(NO_BONUS, /*bIncludeOurs*/ true, /*bIncludeNeutral*/ true, -1, /*bLand*/ true, /*bWater*/ false) > 0) ||
 				(isCapital() && (getPopulation() > 3) && iNumCitiesInArea > 1))
 			{
-				if (!bChooseWorker && AI_chooseUnit("optional worker", UNITAI_WORKER))
+				if (!bChooseWorker && AI_chooseUnitForDemand("optional worker", AI_UNIT_DEMAND_POLICY_WORKER, UNITAI_WORKER, kWorkerDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					return;
 				}
@@ -2828,7 +2859,7 @@ void CvCityAI::AI_chooseProduction()
 
 			if (iNeededSeaWorkers > iExistingSeaWorkers)
 			{
-				if (AI_chooseUnit("optional sea worker", UNITAI_WORKER_SEA))
+				if (AI_chooseUnitForDemand("optional sea worker", AI_UNIT_DEMAND_POLICY_SEA_WORKER, UNITAI_WORKER_SEA, kSeaWorkerDemand, AI_UNIT_DEMAND_WATER_AREA, waterArea(true)))
 				{
 					return;
 				}
@@ -3353,7 +3384,7 @@ void CvCityAI::AI_chooseProduction()
 	if (!bInhibitUnits && iNumSpies < iNeededSpies)
 	{
 		//if (AI_chooseUnit("spy", UNITAI_SPY, 5 + 50 / (1 + iNumSpies)))
-		if (AI_chooseUnit("spy", UNITAI_SPY, 30 * iNeededSpies / (3 * iNumSpies + iNeededSpies)))
+		if (AI_chooseUnitForDemand("spy", AI_UNIT_DEMAND_POLICY_SPY, UNITAI_SPY, kSpyDemand, AI_UNIT_DEMAND_LAND_AREA, pArea, 30 * iNeededSpies / (3 * iNumSpies + iNeededSpies)))
 		{
 			return;
 		}
@@ -3364,7 +3395,7 @@ void CvCityAI::AI_chooseProduction()
 	{
 		if (iAreaBestFoundValue > iMinFoundValue)
 		{
-			if (AI_chooseUnit("optional settlers", UNITAI_SETTLE))
+			if (AI_chooseUnitForDemand("optional settlers", AI_UNIT_DEMAND_POLICY_SETTLER, UNITAI_SETTLE, kSettlerDemand, AI_UNIT_DEMAND_PLAYER, NULL))
 			{
 				return;
 			}
@@ -3523,9 +3554,9 @@ void CvCityAI::AI_chooseProduction()
 		{
 			if (bPrimaryArea)
 			{
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_EXPLORE_SEA) < std::min(1, player.AI_neededExplorers(pWaterArea)))
+				if (player.AI_getUnitRoleSupply(UNITAI_EXPLORE_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply < std::min(1, player.AI_neededExplorers(pWaterArea)))
 				{
-					if (AI_chooseUnit("explore sea", UNITAI_EXPLORE_SEA))
+					if (AI_chooseUnitForDemand("explore sea", AI_UNIT_DEMAND_POLICY_EXPLORE_SEA, UNITAI_EXPLORE_SEA, kSeaExplorerDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea))
 					{
 						return;
 					}
@@ -3615,12 +3646,12 @@ void CvCityAI::AI_chooseProduction()
 	if (!bInhibitUnits)
 	{
 		//harass first
-		int iInfiltratorCount = player.AI_totalAreaUnitAIs(pArea, UNITAI_INFILTRATOR);
+		int iInfiltratorCount = player.AI_getUnitRoleSupply(UNITAI_INFILTRATOR, AI_UNIT_DEMAND_LAND_AREA, pArea).iEffectiveSupply;
 		if (iInfiltratorCount < 1)
 		{
 			LOG_BBAI_CITY(2, ("#79      City %S Build Infiltrator", getName().GetCString()));
 			//this is enough of a trigger.  Once introduced they will expand themselves if needed and possible.
-			if (AI_chooseUnit("Infiltrator needed anywhere", UNITAI_INFILTRATOR))
+			if (AI_chooseUnitForDemand("Infiltrator needed anywhere", AI_UNIT_DEMAND_POLICY_INFILTRATOR, UNITAI_INFILTRATOR, kInfiltratorDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 			{
 				LOG_BBAI_CITY(4, ("#79      City %S Infiltrator ordered", getName().GetCString()));
 				return;
@@ -3678,7 +3709,7 @@ void CvCityAI::AI_chooseProduction()
 			return;
 		}
 
-		if (AI_chooseUnit("need hunters", UNITAI_HUNTER))
+		if (AI_chooseUnitForDemand("need hunters", AI_UNIT_DEMAND_POLICY_HUNTER, UNITAI_HUNTER, kHunterDemand, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -8814,7 +8845,10 @@ bool CvCityAI::AI_chooseUnit(const char* reason, UnitAITypes eUnitAI, int iOdds,
 					NULL,
 					eUnitAI,
 					iUnitStrength,
-					criteria);
+					criteria,
+					MAX_INT,
+					CONTRACT_WORK_REQUEST_TRANSIENT_CITY_PRODUCTION,
+					getID());
 
 				m_iRequestedUnit ++;
 
@@ -8830,6 +8864,52 @@ bool CvCityAI::AI_chooseUnit(const char* reason, UnitAITypes eUnitAI, int iOdds,
 	}
 
 	return false;
+}
+
+bool CvCityAI::AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
+{
+#if defined(USE_UNIT_TENDERING) && defined(USE_AI_UNIT_DEMAND_ACCOUNTING)
+	if (isNPC() || m_iRequestedUnit > MAX_REQUESTEDUNIT_PER_CITY)
+	{
+		return false;
+	}
+	if (iOdds >= 0 && GC.getGame().getSorenRandNum(100, "City AI choose unit demand") >= iOdds)
+	{
+		return false;
+	}
+	if (iPriorityOverride == -1)
+	{
+		iPriorityOverride = m_iTempBuildPriority;
+	}
+
+	AIUnitDemandKey kKey;
+	kKey.ePolicy = ePolicy;
+	kKey.eSelector = AI_UNIT_DEMAND_BY_ROLE;
+	kKey.eUnitAI = eUnitAI;
+	kKey.eScope = eScope;
+	kKey.iScopeId = pArea == NULL ? -1 : pArea->getID();
+	if (criteria != NULL)
+	{
+		kKey.criteria = *criteria;
+	}
+
+	AIUnitDemandResult kResult = GET_PLAYER(getOwner()).AI_requestUnitDemandIfNeeded(
+		this,
+		kKey,
+		kTarget,
+		iPriorityOverride,
+		AI_evaluateMaxUnitSpending(),
+		criteria
+	);
+	if (kResult.iAcceptedQuantity > 0 || kResult.eReason == AI_UNIT_DEMAND_ADMISSION_REFRESHED)
+	{
+		m_iRequestedUnit++;
+		return m_iRequestedBuilding > MAX_REQUESTEDBUILDING_PER_CITY;
+	}
+	return false;
+#else
+	return AI_chooseUnit(reason, eUnitAI, iOdds, -1, iPriorityOverride, criteria);
+#endif
 }
 
 bool CvCityAI::AI_chooseUnitImmediate(const char* reason, UnitAITypes eUnitAI, const CvUnitSelectionCriteria* criteria, UnitTypes eUnitType)
@@ -8904,9 +8984,13 @@ bool CvCityAI::AI_chooseDefender(const char* reason)
 	return false;
 }
 
-bool CvCityAI::AI_chooseLeastRepresentedUnit(const char* reason, UnitTypeWeightArray& allowedTypes, int iOdds)
+bool CvCityAI::AI_chooseLeastRepresentedUnit(const char* reason, UnitTypeWeightArray& allowedTypes, int iOdds, AIUnitDemandClassTypes eDemandClass)
 {
 	PROFILE_EXTRA_FUNC();
+	if (!isNPC() && !GET_PLAYER(getOwner()).AI_isUnitDemandClassAllowed(eDemandClass, AI_evaluateMaxUnitSpending()))
+	{
+		return false;
+	}
 	if (iOdds < 0 || iOdds > GC.getGame().getSorenRandNum(100, "AI choose least represented unit overall odds"))
 	{
 		std::multimap<int, UnitAITypes, std::greater<int> > bestTypes;

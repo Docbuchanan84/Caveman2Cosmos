@@ -424,6 +424,7 @@
     <ClInclude Include="AI_Defines.h" />
     <ClInclude Include="BoolExpr.h" />
     <ClInclude Include="CheckSum.h" />
+    <ClInclude Include="CvAIUnitDemand.h" />
     <ClInclude Include="CvArea.h" />
     <ClInclude Include="CvArtFileMgr.h" />
     <ClInclude Include="CvBugOptions.h" />

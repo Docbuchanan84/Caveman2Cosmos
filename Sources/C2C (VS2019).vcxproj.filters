@@ -968,6 +968,9 @@
     <ClInclude Include="CvContractBroker.h">
       <Filter>Source\Infrastructure\ContractBroker</Filter>
     </ClInclude>
+    <ClInclude Include="CvAIUnitDemand.h">
+      <Filter>Source\Infrastructure\ContractBroker</Filter>
+    </ClInclude>
     <ClInclude Include="CvArea.h">
       <Filter>Source\Base\Area</Filter>
     </ClInclude>

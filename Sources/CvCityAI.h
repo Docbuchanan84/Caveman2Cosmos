@@ -11,6 +11,7 @@
 #include "OutputRatios.h"
 #include "PlotInfo.h"
 #include "CvEnums.h"
+#include "CvAIUnitDemand.h"
 
 //	Possible focus flags to use when evaluating buildings
 #define BUILDINGFOCUS_FOOD					(1 << 1)
@@ -678,10 +679,11 @@ protected:
 	int AI_calculateCulturePressure(bool bGreatWork = false) const;
 
 	bool AI_chooseUnit(const char* reason, UnitAITypes eUnitAI /*= NO_UNITAI*/, int iOdds = -1, int iUnitStrength = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
+	bool AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
 	bool AI_chooseUnitImmediate(const char* reason, UnitAITypes eUnitAI, const CvUnitSelectionCriteria* criteria = NULL, UnitTypes eUnitType = NO_UNIT);
 	bool AI_chooseUnit(UnitTypes eUnit, UnitAITypes eUnitAI);
 	bool AI_chooseDefender(const char* reason);
-	bool AI_chooseLeastRepresentedUnit(const char* reason, UnitTypeWeightArray &allowedTypes, int iOdds = -1);
+	bool AI_chooseLeastRepresentedUnit(const char* reason, UnitTypeWeightArray &allowedTypes, int iOdds = -1, AIUnitDemandClassTypes eDemandClass = AI_UNIT_DEMAND_STRATEGIC);
 	bool AI_chooseBuilding(int iFocusFlags = 0, int iMaxTurns = MAX_INT, int iMinThreshold = 0, int iOdds = -1, bool bMaximizePerTurnValue = false, PropertyTypes eProperty = NO_PROPERTY);
 	bool AI_chooseExperienceBuilding(const UnitAITypes eUnitAI, const int iUnitProductionLossesFactor);
 	bool AI_choosePropertyControlBuildingAndUnit(int iTriggerPercentOfPropertyOpRange, PropertyTypes pProperty = NO_PROPERTY, int eMaxPropertyUnitsPercent = 20);

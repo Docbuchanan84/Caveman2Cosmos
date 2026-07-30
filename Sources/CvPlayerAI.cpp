@@ -381,6 +381,13 @@ void CvPlayerAI::AI_reset(bool bConstructor)
 	m_iFinancialTroubleCacheTurn = -1;
 	m_iFinancialTroubleCacheGold = -1;
 	m_iFinancialTroubleCacheNumCities = -1;
+	m_bUnitDemandEconomyStrike = false;
+	m_bUnitDemandEconomyCriticalGold = false;
+	m_bUnitDemandEconomyFinancialTrouble = false;
+	m_iUnitDemandEconomyUnitCostPercent = 0;
+	m_iUnitDemandEconomyCacheTurn = -1;
+	m_aiWaterAreaLiveUnitAICache.clear();
+	m_aiWaterAreaTrainUnitAICache.clear();
 }
 
 
@@ -409,6 +416,19 @@ void CvPlayerAI::AI_doTurnPre()
 	{
 		AI_recalculateUnitCounts();
 	}
+	else
+	{
+#ifdef _DEBUG
+		if (!AI_validateWaterAreaUnitAICache())
+		{
+			FErrorMsg("Water-area UnitAI supplemental cache miscount");
+		}
+#endif
+		AI_rebuildWaterAreaUnitAICache();
+	}
+
+	AI_updateUnitDemandEconomyCache();
+	getContractBroker().beginProductionDemandCycle();
 
 	//	Force recalculation of the mission target cache each turn for
 	//	reliabilty reasons (more robust to bugs)
@@ -451,6 +471,46 @@ void CvPlayerAI::AI_doTurnPre()
 				{
 					FErrorMsg("UnitAI miscount");
 				}
+
+				int iQueuedCount = 0;
+				foreach_(const CvCity * pLoopCity, cities())
+				{
+					if (pLoopCity->area() == pLoopArea)
+					{
+						iQueuedCount += pLoopCity->getNumTrainUnitAI((UnitAITypes)iI);
+					}
+				}
+				if (iQueuedCount != pLoopArea->getNumTrainAIUnits(getID(), (UnitAITypes)iI))
+				{
+					FErrorMsg("Area UnitAI training count miscount");
+				}
+			}
+		}
+
+		for (int iI = 0; iI < NUM_UNITAI_TYPES; ++iI)
+		{
+			int iLiveCount = 0;
+			foreach_(const CvUnit * pLoopUnit, units())
+			{
+				if (!pLoopUnit->isTempUnit() && pLoopUnit->AI_getUnitAIType() == (UnitAITypes)iI)
+				{
+					++iLiveCount;
+				}
+			}
+
+			int iQueuedCount = 0;
+			foreach_(const CvCity * pLoopCity, cities())
+			{
+				iQueuedCount += pLoopCity->getNumTrainUnitAI((UnitAITypes)iI);
+			}
+
+			if (iLiveCount != AI_getNumAIUnits((UnitAITypes)iI))
+			{
+				FErrorMsg("Player UnitAI live count miscount");
+			}
+			if (iQueuedCount != AI_getNumTrainAIUnits((UnitAITypes)iI))
+			{
+				FErrorMsg("Player UnitAI training count miscount");
 			}
 		}
 
@@ -11870,28 +11930,325 @@ int CvPlayerAI::AI_totalAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) co
 int CvPlayerAI::AI_totalWaterAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) const
 {
 	PROFILE_EXTRA_FUNC();
-	int iCount = AI_totalAreaUnitAIs(pArea, eUnitAI);
+	const int iKey = pArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
+	std::map<int, int>::const_iterator liveIt = m_aiWaterAreaLiveUnitAICache.find(iKey);
+	std::map<int, int>::const_iterator trainIt = m_aiWaterAreaTrainUnitAICache.find(iKey);
 
-	for (int iI = 0; iI < MAX_PLAYERS; iI++)
+	return AI_totalAreaUnitAIs(pArea, eUnitAI)
+		+ (liveIt == m_aiWaterAreaLiveUnitAICache.end() ? 0 : liveIt->second)
+		+ (trainIt == m_aiWaterAreaTrainUnitAICache.end() ? 0 : trainIt->second);
+}
+
+void CvPlayerAI::AI_rebuildWaterAreaUnitAICache()
+{
+	PROFILE_FUNC();
+	m_aiWaterAreaLiveUnitAICache.clear();
+	m_aiWaterAreaTrainUnitAICache.clear();
+
+	foreach_(const CvUnit * pLoopUnit, units())
 	{
-		if (GET_PLAYER((PlayerTypes)iI).isAlive())
+		if (pLoopUnit->isTempUnit() || pLoopUnit->plot() == NULL)
 		{
-			foreach_(const CvCity * pLoopCity, GET_PLAYER((PlayerTypes)iI).cities())
-			{
-				if (pLoopCity->waterArea() == pArea)
-				{
-					iCount += pLoopCity->plot()->plotCount(PUF_isUnitAIType, eUnitAI, -1, NULL, getID());
+			continue;
+		}
+		const CvCity* pPlotCity = pLoopUnit->plot()->getPlotCity();
+		const CvArea* pWaterArea = pPlotCity == NULL ? NULL : pPlotCity->waterArea();
+		const UnitAITypes eUnitAI = pLoopUnit->AI_getUnitAIType();
+		if (pWaterArea != NULL && eUnitAI != NO_UNITAI)
+		{
+			const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
+			m_aiWaterAreaLiveUnitAICache[iKey]++;
+		}
+	}
 
-					if (pLoopCity->getOwner() == getID())
-					{
-						iCount += pLoopCity->getNumTrainUnitAI(eUnitAI);
-					}
-				}
+	foreach_(const CvCity * pLoopCity, cities())
+	{
+		const CvArea* pWaterArea = pLoopCity->waterArea();
+		if (pWaterArea == NULL)
+		{
+			continue;
+		}
+		for (int iOrder = 0; iOrder < pLoopCity->getNumOrdersQueued(); ++iOrder)
+		{
+			const OrderData kOrder = pLoopCity->getOrderAt(iOrder);
+			if (kOrder.eOrderType == ORDER_TRAIN && kOrder.getUnitAIType() != NO_UNITAI)
+			{
+				const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)kOrder.getUnitAIType();
+				m_aiWaterAreaTrainUnitAICache[iKey]++;
+			}
+		}
+	}
+}
+
+bool CvPlayerAI::AI_validateWaterAreaUnitAICache() const
+{
+	std::map<int, int> aiExpectedLive;
+	std::map<int, int> aiExpectedTrain;
+
+	foreach_(const CvUnit * pLoopUnit, units())
+	{
+		if (pLoopUnit->isTempUnit() || pLoopUnit->plot() == NULL)
+		{
+			continue;
+		}
+		const CvCity* pPlotCity = pLoopUnit->plot()->getPlotCity();
+		const CvArea* pWaterArea = pPlotCity == NULL ? NULL : pPlotCity->waterArea();
+		const UnitAITypes eUnitAI = pLoopUnit->AI_getUnitAIType();
+		if (pWaterArea != NULL && eUnitAI != NO_UNITAI)
+		{
+			aiExpectedLive[pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI]++;
+		}
+	}
+
+	foreach_(const CvCity * pLoopCity, cities())
+	{
+		const CvArea* pWaterArea = pLoopCity->waterArea();
+		if (pWaterArea == NULL)
+		{
+			continue;
+		}
+		for (int iOrder = 0; iOrder < pLoopCity->getNumOrdersQueued(); ++iOrder)
+		{
+			const OrderData kOrder = pLoopCity->getOrderAt(iOrder);
+			if (kOrder.eOrderType == ORDER_TRAIN && kOrder.getUnitAIType() != NO_UNITAI)
+			{
+				aiExpectedTrain[pWaterArea->getID() * NUM_UNITAI_TYPES + (int)kOrder.getUnitAIType()]++;
 			}
 		}
 	}
 
-	return iCount;
+	for (std::map<int, int>::const_iterator it = aiExpectedLive.begin(); it != aiExpectedLive.end(); ++it)
+	{
+		std::map<int, int>::const_iterator cachedIt = m_aiWaterAreaLiveUnitAICache.find(it->first);
+		if (cachedIt == m_aiWaterAreaLiveUnitAICache.end() || cachedIt->second != it->second)
+		{
+			return false;
+		}
+	}
+	for (std::map<int, int>::const_iterator it = m_aiWaterAreaLiveUnitAICache.begin(); it != m_aiWaterAreaLiveUnitAICache.end(); ++it)
+	{
+		if (it->second != 0 && aiExpectedLive.find(it->first) == aiExpectedLive.end())
+		{
+			return false;
+		}
+	}
+	for (std::map<int, int>::const_iterator it = aiExpectedTrain.begin(); it != aiExpectedTrain.end(); ++it)
+	{
+		std::map<int, int>::const_iterator cachedIt = m_aiWaterAreaTrainUnitAICache.find(it->first);
+		if (cachedIt == m_aiWaterAreaTrainUnitAICache.end() || cachedIt->second != it->second)
+		{
+			return false;
+		}
+	}
+	for (std::map<int, int>::const_iterator it = m_aiWaterAreaTrainUnitAICache.begin(); it != m_aiWaterAreaTrainUnitAICache.end(); ++it)
+	{
+		if (it->second != 0 && aiExpectedTrain.find(it->first) == aiExpectedTrain.end())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+void CvPlayerAI::AI_changeWaterAreaTrainAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange)
+{
+	if (pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
+	{
+		return;
+	}
+	const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
+	m_aiWaterAreaTrainUnitAICache[iKey] += iChange;
+	FASSERT_NOT_NEGATIVE(m_aiWaterAreaTrainUnitAICache[iKey]);
+	if (m_aiWaterAreaTrainUnitAICache[iKey] < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-training cached=%d action=rebuild", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaTrainUnitAICache[iKey]);
+		AI_noteUnitRecalcNeeded();
+	}
+}
+
+void CvPlayerAI::AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange)
+{
+	if (pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
+	{
+		return;
+	}
+	const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
+	m_aiWaterAreaLiveUnitAICache[iKey] += iChange;
+	FASSERT_NOT_NEGATIVE(m_aiWaterAreaLiveUnitAICache[iKey]);
+	if (m_aiWaterAreaLiveUnitAICache[iKey] < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-live cached=%d action=rebuild", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaLiveUnitAICache[iKey]);
+		AI_noteUnitRecalcNeeded();
+	}
+}
+
+AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const
+{
+	AIUnitRoleSupply kResult;
+	int iScopeId = -1;
+
+	switch (eScope)
+	{
+	case AI_UNIT_DEMAND_PLAYER:
+		kResult.iExisting = AI_getNumAIUnits(eUnitAI);
+		kResult.iTraining = AI_getNumTrainAIUnits(eUnitAI);
+		break;
+
+	case AI_UNIT_DEMAND_LAND_AREA:
+		if (pArea == NULL || pArea->isWater())
+		{
+			return kResult;
+		}
+		iScopeId = pArea->getID();
+		kResult.iExisting = pArea->getNumAIUnits(getID(), eUnitAI);
+		kResult.iTraining = pArea->getNumTrainAIUnits(getID(), eUnitAI);
+		break;
+
+	case AI_UNIT_DEMAND_WATER_AREA:
+		if (pArea == NULL || !pArea->isWater())
+		{
+			return kResult;
+		}
+		{
+			iScopeId = pArea->getID();
+			const int iKey = iScopeId * NUM_UNITAI_TYPES + (int)eUnitAI;
+			std::map<int, int>::const_iterator liveIt = m_aiWaterAreaLiveUnitAICache.find(iKey);
+			std::map<int, int>::const_iterator trainIt = m_aiWaterAreaTrainUnitAICache.find(iKey);
+			kResult.iExisting = pArea->getNumAIUnits(getID(), eUnitAI)
+				+ (liveIt == m_aiWaterAreaLiveUnitAICache.end() ? 0 : liveIt->second);
+			kResult.iTraining = pArea->getNumTrainAIUnits(getID(), eUnitAI)
+				+ (trainIt == m_aiWaterAreaTrainUnitAICache.end() ? 0 : trainIt->second);
+		}
+		break;
+	}
+
+	kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(eUnitAI, eScope, iScopeId);
+	kResult.iEffectiveSupply = kResult.iExisting + kResult.iTraining + kResult.iOutstandingProduction;
+	return kResult;
+}
+
+int CvPlayerAI::AI_getUnitRoleDeficit(UnitAITypes eUnitAI, int iDesired, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const
+{
+	return std::max(0, iDesired - AI_getUnitRoleSupply(eUnitAI, eScope, pArea).iEffectiveSupply);
+}
+
+AIUnitRoleSupply CvPlayerAI::AI_getUnitDemandBaseSupply(const AIUnitDemandKey& kKey) const
+{
+	if (kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT)
+	{
+		AIUnitRoleSupply kResult;
+		if (kKey.eScope != AI_UNIT_DEMAND_PLAYER || kKey.eUnit == NO_UNIT)
+		{
+			return kResult;
+		}
+		kResult.iExisting = getUnitCount(kKey.eUnit);
+		kResult.iTraining = getUnitCountPlusMaking(kKey.eUnit) - kResult.iExisting;
+		kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(kKey.eUnitAI, kKey.eScope, kKey.iScopeId);
+		kResult.iEffectiveSupply = kResult.iExisting + kResult.iTraining + kResult.iOutstandingProduction;
+		return kResult;
+	}
+
+	const CvArea* pArea = kKey.eScope == AI_UNIT_DEMAND_PLAYER ? NULL : GC.getMap().getArea(kKey.iScopeId);
+	return AI_getUnitRoleSupply(kKey.eUnitAI, kKey.eScope, pArea);
+}
+
+void CvPlayerAI::AI_updateUnitDemandEconomyCache()
+{
+	m_bUnitDemandEconomyStrike = isStrike();
+	m_bUnitDemandEconomyCriticalGold = AI_hasCriticalGold();
+	m_bUnitDemandEconomyFinancialTrouble = AI_isFinancialTrouble();
+	m_iUnitDemandEconomyUnitCostPercent = (int)(getFinalUnitUpkeep() * 100 / std::max<int64_t>(1, calculatePreInflatedCosts()));
+	m_iUnitDemandEconomyCacheTurn = GC.getGame().getGameTurn();
+}
+
+AIUnitDemandEconomyStateTypes CvPlayerAI::AI_getUnitDemandEconomyState(int iMaxUnitSpendingPercent) const
+{
+	if (m_bUnitDemandEconomyStrike) return AI_UNIT_DEMAND_ECONOMY_STRIKE;
+	if (m_bUnitDemandEconomyCriticalGold) return AI_UNIT_DEMAND_ECONOMY_CRITICAL_GOLD;
+	if (m_bUnitDemandEconomyFinancialTrouble) return AI_UNIT_DEMAND_ECONOMY_FINANCIAL_TROUBLE;
+	if (m_iUnitDemandEconomyUnitCostPercent >= iMaxUnitSpendingPercent) return AI_UNIT_DEMAND_ECONOMY_SATURATED;
+	return AI_UNIT_DEMAND_ECONOMY_NORMAL;
+}
+
+int CvPlayerAI::AI_getAllowedUnitDemandDesired(const AIUnitDemandTarget& kTarget, int iMaxUnitSpendingPercent) const
+{
+	AIUnitDemandClassTypes eAllowedClass = AI_UNIT_DEMAND_OPTIONAL;
+	switch (AI_getUnitDemandEconomyState(iMaxUnitSpendingPercent))
+	{
+	case AI_UNIT_DEMAND_ECONOMY_STRIKE:
+	case AI_UNIT_DEMAND_ECONOMY_CRITICAL_GOLD:
+		eAllowedClass = AI_UNIT_DEMAND_EMERGENCY;
+		break;
+	case AI_UNIT_DEMAND_ECONOMY_FINANCIAL_TROUBLE:
+	case AI_UNIT_DEMAND_ECONOMY_SATURATED:
+		eAllowedClass = AI_UNIT_DEMAND_ESSENTIAL;
+		break;
+	default:
+		break;
+	}
+	return kTarget.aiDesiredThroughClass[(int)eAllowedClass];
+}
+
+bool CvPlayerAI::AI_isUnitDemandClassAllowed(AIUnitDemandClassTypes eDemandClass, int iMaxUnitSpendingPercent) const
+{
+	switch (AI_getUnitDemandEconomyState(iMaxUnitSpendingPercent))
+	{
+	case AI_UNIT_DEMAND_ECONOMY_STRIKE:
+	case AI_UNIT_DEMAND_ECONOMY_CRITICAL_GOLD:
+		return eDemandClass == AI_UNIT_DEMAND_EMERGENCY;
+
+	case AI_UNIT_DEMAND_ECONOMY_FINANCIAL_TROUBLE:
+	case AI_UNIT_DEMAND_ECONOMY_SATURATED:
+		return eDemandClass <= AI_UNIT_DEMAND_ESSENTIAL;
+
+	default:
+		return true;
+	}
+}
+
+AIUnitDemandResult CvPlayerAI::AI_requestUnitDemandIfNeeded(CvCityAI* pRequestingCity, const AIUnitDemandKey& kSuppliedKey, const AIUnitDemandTarget& kTarget, int iPriority, int iMaxUnitSpendingPercent, const CvUnitSelectionCriteria* pCriteria)
+{
+	AIUnitDemandResult kResult;
+	AIUnitDemandKey kKey = kSuppliedKey;
+	if (pCriteria != NULL)
+	{
+		kKey.criteria = *pCriteria;
+	}
+
+	if (!kTarget.isValid())
+	{
+		kResult.eReason = AI_UNIT_DEMAND_ADMISSION_INVALID_TARGET;
+		return kResult;
+	}
+	if (kKey.eSelector == AI_UNIT_DEMAND_BY_ROLE && kKey.eUnitAI == NO_UNITAI
+	|| kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT && (kKey.eUnit == NO_UNIT || kKey.eScope != AI_UNIT_DEMAND_PLAYER))
+	{
+		kResult.eReason = AI_UNIT_DEMAND_ADMISSION_INVALID_SELECTOR;
+		return kResult;
+	}
+	if (kKey.eScope != AI_UNIT_DEMAND_PLAYER)
+	{
+		const CvArea* pArea = GC.getMap().getArea(kKey.iScopeId);
+		if (pArea == NULL
+		|| (kKey.eScope == AI_UNIT_DEMAND_LAND_AREA && pArea->isWater())
+		|| (kKey.eScope == AI_UNIT_DEMAND_WATER_AREA && !pArea->isWater()))
+		{
+			kResult.eReason = AI_UNIT_DEMAND_ADMISSION_INVALID_SCOPE;
+			return kResult;
+		}
+	}
+
+	const AIUnitRoleSupply kBaseSupply = AI_getUnitDemandBaseSupply(kKey);
+	kResult = getContractBroker().upsertProductionDemand(
+		kKey,
+		kTarget,
+		iPriority,
+		iMaxUnitSpendingPercent,
+		pRequestingCity == NULL ? -1 : pRequestingCity->getID(),
+		kBaseSupply.iExisting + kBaseSupply.iTraining
+	);
+	kResult.kSupply = AI_getUnitDemandBaseSupply(kKey);
+	return kResult;
 }
 
 
@@ -12011,7 +12368,6 @@ int CvPlayerAI::AI_neededWorkers(const CvArea* pArea) const
 	return iNeeded;
 
 }
-
 
 int CvPlayerAI::AI_neededMissionaries(const CvArea* pArea, ReligionTypes eReligion) const
 {
@@ -16605,6 +16961,11 @@ void CvPlayerAI::AI_changeNumTrainAIUnits(UnitAITypes eIndex, int iChange)
 	FASSERT_BOUNDS(0, NUM_UNITAI_TYPES, eIndex);
 	m_aiNumTrainAIUnits[eIndex] += iChange;
 	FASSERT_NOT_NEGATIVE(AI_getNumTrainAIUnits(eIndex));
+	if (AI_getNumTrainAIUnits(eIndex) < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d role=%d kind=training cached=%d action=rebuild", getID(), (int)eIndex, AI_getNumTrainAIUnits(eIndex));
+		AI_noteUnitRecalcNeeded();
+	}
 }
 
 
@@ -16620,6 +16981,11 @@ void CvPlayerAI::AI_changeNumAIUnits(UnitAITypes eIndex, int iChange)
 	FASSERT_BOUNDS(0, NUM_UNITAI_TYPES, eIndex);
 	m_aiNumAIUnits[eIndex] += iChange;
 	FASSERT_NOT_NEGATIVE(AI_getNumAIUnits(eIndex));
+	if (AI_getNumAIUnits(eIndex) < 0)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d role=%d kind=live cached=%d action=rebuild", getID(), (int)eIndex, AI_getNumAIUnits(eIndex));
+		AI_noteUnitRecalcNeeded();
+	}
 }
 
 
@@ -20691,6 +21057,11 @@ void CvPlayerAI::read(FDataStreamBase* pStream)
 		}
 	}
 	AI_invalidateAttitudeCache();
+
+	// Saved counters are retained for compatibility, but queued training and
+	// area/water supplements are authoritative from primary objects after load.
+	// Rebuild them before this player can make another production decision.
+	AI_noteUnitRecalcNeeded();
 }
 
 
@@ -35594,10 +35965,12 @@ void CvPlayerAI::AI_recalculateUnitCounts()
 	for (int iI = 0; iI < NUM_UNITAI_TYPES; iI++)
 	{
 		AI_changeNumAIUnits((UnitAITypes)iI, -AI_getNumAIUnits((UnitAITypes)iI));
+		AI_changeNumTrainAIUnits((UnitAITypes)iI, -AI_getNumTrainAIUnits((UnitAITypes)iI));
 
 		foreach_(CvArea * pLoopArea, GC.getMap().areas())
 		{
 			pLoopArea->changeNumAIUnits(m_eID, (UnitAITypes)iI, -pLoopArea->getNumAIUnits(m_eID, (UnitAITypes)iI));
+			pLoopArea->changeNumTrainAIUnits(m_eID, (UnitAITypes)iI, -pLoopArea->getNumTrainAIUnits(m_eID, (UnitAITypes)iI));
 		}
 	}
 
@@ -35612,6 +35985,21 @@ void CvPlayerAI::AI_recalculateUnitCounts()
 			pLoopUnit->area()->changeNumAIUnits(m_eID, eAIType, 1);
 		}
 	}
+
+	foreach_(const CvCity * pLoopCity, cities())
+	{
+		for (int iOrder = 0; iOrder < pLoopCity->getNumOrdersQueued(); ++iOrder)
+		{
+			const OrderData kOrder = pLoopCity->getOrderAt(iOrder);
+			if (kOrder.eOrderType == ORDER_TRAIN && kOrder.getUnitAIType() != NO_UNITAI)
+			{
+				AI_changeNumTrainAIUnits(kOrder.getUnitAIType(), 1);
+				pLoopCity->area()->changeNumTrainAIUnits(m_eID, kOrder.getUnitAIType(), 1);
+			}
+		}
+	}
+
+	AI_rebuildWaterAreaUnitAICache();
 
 	bUnitRecalcNeeded = false;
 }

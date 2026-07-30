@@ -12409,7 +12409,7 @@ void CvPlayer::setTurnActive(bool bNewValue, bool bDoTurn)
 #ifdef USE_UNIT_TENDERING
 				//const PlayerTypes eOwner = getOwner();
 				//CvPlayerAI& player = GET_PLAYER(eOwner);
-				if (isAlive() && !isHumanPlayer() &&!bFinancialTrouble)
+				if (isAlive() && !isHumanPlayer())
 				{
 					getContractBroker().finalizeTenderContracts();
 				}
@@ -28379,6 +28379,11 @@ void CvPlayer::addReminder(int iGameTurn, CvWString szMessage) const
 // BUG - Reminder Mod - end
 
 CvContractBroker& CvPlayer::getContractBroker()
+{
+	return m_contractBroker;
+}
+
+const CvContractBroker& CvPlayer::getContractBroker() const
 {
 	return m_contractBroker;
 }

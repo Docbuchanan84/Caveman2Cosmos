@@ -2329,6 +2329,7 @@ public:
 
 	void RecalculatePlotGroupHashes();
 	CvContractBroker& getContractBroker();
+	const CvContractBroker& getContractBroker() const;
 
 	void addPlotDangerSource(const CvPlot* pPlot, int iStrength);
 

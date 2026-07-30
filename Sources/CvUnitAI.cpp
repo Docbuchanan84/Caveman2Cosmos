@@ -1649,6 +1649,12 @@ UnitAITypes CvUnitAI::AI_getUnitAIType() const
 
 		area()->changeNumAIUnits(getOwner(), m_eUnitAIType, 1);
 		GET_PLAYER(getOwner()).AI_changeNumAIUnits(m_eUnitAIType, 1);
+		const CvCity* pPlotCity = plot() == NULL ? NULL : plot()->getPlotCity();
+		GET_PLAYER(getOwner()).AI_changeWaterAreaLiveAIUnits(
+			pPlotCity == NULL ? NULL : pPlotCity->waterArea(),
+			m_eUnitAIType,
+			1
+		);
 	}
 	return m_eUnitAIType;
 }
@@ -1661,6 +1667,9 @@ void CvUnitAI::AI_setUnitAIType(UnitAITypes eNewValue)
 
 	if (AI_getUnitAIType() != eNewValue)
 	{
+		const CvCity* pPlotCity = plot() == NULL ? NULL : plot()->getPlotCity();
+		const CvArea* pWaterArea = pPlotCity == NULL ? NULL : pPlotCity->waterArea();
+		GET_PLAYER(getOwner()).AI_changeWaterAreaLiveAIUnits(pWaterArea, AI_getUnitAIType(), -1);
 		area()->changeNumAIUnits(getOwner(), AI_getUnitAIType(), -1);
 		GET_PLAYER(getOwner()).AI_changeNumAIUnits(AI_getUnitAIType(), -1);
 
@@ -1668,6 +1677,7 @@ void CvUnitAI::AI_setUnitAIType(UnitAITypes eNewValue)
 
 		area()->changeNumAIUnits(getOwner(), AI_getUnitAIType(), 1);
 		GET_PLAYER(getOwner()).AI_changeNumAIUnits(AI_getUnitAIType(), 1);
+		GET_PLAYER(getOwner()).AI_changeWaterAreaLiveAIUnits(pWaterArea, AI_getUnitAIType(), 1);
 
 		joinGroup(NULL);
 	}

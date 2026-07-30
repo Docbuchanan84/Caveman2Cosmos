@@ -3,6 +3,7 @@
 #ifndef CvContractBroker_h__
 #define CvContractBroker_h__
 
+#include "CvAIUnitDemand.h"
 #include "CvUnitSelectionCriteria.h"
 
 class CvCity;
@@ -21,6 +22,11 @@ typedef enum	unitCapabilities
 	HEALER_UNITCAPABILITIES = 1 << 3
 } unitCapabilities;
 
+enum ContractWorkRequestKindTypes
+{
+	CONTRACT_WORK_REQUEST_PERSISTENT_OPERATIONAL,
+	CONTRACT_WORK_REQUEST_TRANSIENT_CITY_PRODUCTION
+};
 
 //	Structures used to hold work requests and looking-for-work unit info
 typedef struct
@@ -36,8 +42,63 @@ typedef struct
 	int						iWorkRequestId;
 	int						iRequiredStrengthTimes100;
 	bool					bFulfilled;
+	ContractWorkRequestKindTypes eRequestKind;
+	int						iCreatedTurn;
+	int						iLastRefreshTurn;
+	int						iSourceCityId;
 	CvUnitSelectionCriteria	criteria;
 } workRequest;
+
+struct AIUnitDemandRoleIndex
+{
+	AIUnitDemandRoleIndex()
+		: eUnitAI(NO_UNITAI)
+		, eScope(AI_UNIT_DEMAND_PLAYER)
+		, iScopeId(-1)
+	{}
+
+	AIUnitDemandRoleIndex(UnitAITypes eUnitAI_, AIUnitDemandScopeTypes eScope_, int iScopeId_)
+		: eUnitAI(eUnitAI_)
+		, eScope(eScope_)
+		, iScopeId(iScopeId_)
+	{}
+
+	bool operator<(const AIUnitDemandRoleIndex& kOther) const
+	{
+		if (eUnitAI != kOther.eUnitAI) return eUnitAI < kOther.eUnitAI;
+		if (eScope != kOther.eScope) return eScope < kOther.eScope;
+		return iScopeId < kOther.iScopeId;
+	}
+
+	UnitAITypes eUnitAI;
+	AIUnitDemandScopeTypes eScope;
+	int iScopeId;
+};
+
+struct AIProductionDemand
+{
+	AIProductionDemand()
+		: iRequestId(-1)
+		, iPriority(0)
+		, iMaxUnitSpendingPercent(0)
+		, iSourceCityId(-1)
+		, iOutstandingQuantity(0)
+		, iCreatedTurn(-1)
+		, iLastRefreshTurn(-1)
+		, bInvalid(false)
+	{}
+
+	int iRequestId;
+	AIUnitDemandKey kKey;
+	AIUnitDemandTarget kTarget;
+	int iPriority;
+	int iMaxUnitSpendingPercent;
+	int iSourceCityId;
+	int iOutstandingQuantity;
+	int iCreatedTurn;
+	int iLastRefreshTurn;
+	bool bInvalid;
+};
 
 typedef struct
 {
@@ -113,7 +174,12 @@ public:
 	//		eUnitFlags indicate the type(s) of unit sought
 	//		(iAtX,iAtY) is (roughly) where the work will be
 	//		pJoinUnit may be NULL but if not it is a request to join that unit's group
-	void	advertiseWork(int iPriority, unitCapabilities eUnitFlags, int iAtX, int iAtY, const CvUnit* pJoinUnit, UnitAITypes eAIType = NO_UNITAI, int iUnitStrength = -1, const CvUnitSelectionCriteria* criteria = NULL, int iMaxPath = MAX_INT);
+	void	advertiseWork(int iPriority, unitCapabilities eUnitFlags, int iAtX, int iAtY, const CvUnit* pJoinUnit, UnitAITypes eAIType = NO_UNITAI, int iUnitStrength = -1, const CvUnitSelectionCriteria* criteria = NULL, int iMaxPath = MAX_INT, ContractWorkRequestKindTypes eRequestKind = CONTRACT_WORK_REQUEST_PERSISTENT_OPERATIONAL, int iSourceCityId = -1);
+	void	beginProductionDemandCycle();
+	AIUnitDemandResult upsertProductionDemand(const AIUnitDemandKey& kKey, const AIUnitDemandTarget& kTarget, int iPriority, int iMaxUnitSpendingPercent, int iSourceCityId, int iBaseSupply);
+	int		getOutstandingProduction(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, int iScopeId) const;
+	int		getProductionDemandCount() const { return (int)m_productionDemands.size(); }
+	bool	validateProductionDemandIndexes() const;
 	//	Advertise a tender to build units
 	//		iMinPriority indicates the lowest priority request this tender is appropriate for
 	void	advertiseTender(const CvCity* pCity, int iMinPriority);
@@ -134,6 +200,8 @@ private:
 
 	void log(int level, char* format, ...);
 	void internalRemoveUnit(const int unitId);
+	void changeOutstandingProduction(const AIUnitDemandKey& kKey, int iChange);
+	void finalizeProductionDemands(std::vector<bool>& tenderUsed);
 
 	const workRequest* findWorkRequest(int iWorkRequestId) const;
 	workRequest* findWorkRequestByUnitId(int userId);
@@ -145,10 +213,13 @@ private:
 	PlayerTypes						m_eOwner;
 	const wchar_t					*m_ownerName;
 	std::vector<workRequest>		m_workRequests;
+	std::map<AIUnitDemandKey, AIProductionDemand> m_productionDemands;
+	std::map<AIUnitDemandRoleIndex, int> m_outstandingProductionByRole;
 	std::vector<advertisingUnit>	m_advertisingUnits;
 	std::vector<cityTender>			m_advertisingTenders;
 	std::map<int, bool>				m_contractedUnits;
 	int								m_iNextWorkRequestId;
+	int								m_iNextProductionDemandId;
 	int								m_iEmployedUnits;
 };
 

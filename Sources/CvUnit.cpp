@@ -15984,6 +15984,12 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 		if (AI_getUnitAIType() != NO_UNITAI)
 		{
 			pNewPlot->area()->changeNumAIUnits(eMyPlayer, AI_getUnitAIType(), 1);
+			const CvCity* pNewCity = pNewPlot->getPlotCity();
+			GET_PLAYER(eMyPlayer).AI_changeWaterAreaLiveAIUnits(
+				pNewCity == NULL ? NULL : pNewCity->waterArea(),
+				AI_getUnitAIType(),
+				1
+			);
 		}
 
 		if (isAnimal())
@@ -16014,6 +16020,12 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 		if (AI_getUnitAIType() != NO_UNITAI)
 		{
 			pOldPlot->area()->changeNumAIUnits(eMyPlayer, AI_getUnitAIType(), -1);
+			const CvCity* pOldCity = pOldPlot->getPlotCity();
+			GET_PLAYER(eMyPlayer).AI_changeWaterAreaLiveAIUnits(
+				pOldCity == NULL ? NULL : pOldCity->waterArea(),
+				AI_getUnitAIType(),
+				-1
+			);
 		}
 
 		if (isAnimal())

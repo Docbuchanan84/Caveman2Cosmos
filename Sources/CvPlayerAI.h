@@ -9,6 +9,7 @@
 
 #include "CvPlayer.h"
 #include "AI_defines.h"
+#include "CvAIUnitDemand.h"
 
 class CvArea;
 class CvCity;
@@ -295,6 +296,18 @@ public:
 	int AI_totalUnitAIs(UnitAITypes eUnitAI) const;
 	int AI_totalAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) const;
 	int AI_totalWaterAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) const;
+	AIUnitRoleSupply AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const;
+	int AI_getUnitRoleDeficit(UnitAITypes eUnitAI, int iDesired, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const;
+	AIUnitRoleSupply AI_getUnitDemandBaseSupply(const AIUnitDemandKey& kKey) const;
+	AIUnitDemandResult AI_requestUnitDemandIfNeeded(CvCityAI* pRequestingCity, const AIUnitDemandKey& kKey, const AIUnitDemandTarget& kTarget, int iPriority, int iMaxUnitSpendingPercent, const CvUnitSelectionCriteria* pCriteria);
+	void AI_updateUnitDemandEconomyCache();
+	AIUnitDemandEconomyStateTypes AI_getUnitDemandEconomyState(int iMaxUnitSpendingPercent) const;
+	int AI_getAllowedUnitDemandDesired(const AIUnitDemandTarget& kTarget, int iMaxUnitSpendingPercent) const;
+	bool AI_isUnitDemandClassAllowed(AIUnitDemandClassTypes eDemandClass, int iMaxUnitSpendingPercent) const;
+	void AI_rebuildWaterAreaUnitAICache();
+	bool AI_validateWaterAreaUnitAICache() const;
+	void AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange);
+	void AI_changeWaterAreaTrainAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange);
 	int AI_countCargoSpace(UnitAITypes eUnitAI) const;
 
 	int AI_neededExplorers(const CvArea* pArea) const;
@@ -672,6 +685,14 @@ protected:
 	mutable int m_iFinancialTroubleCacheTurn;
 	mutable int64_t m_iFinancialTroubleCacheGold;
 	mutable int m_iFinancialTroubleCacheNumCities;
+
+	bool m_bUnitDemandEconomyStrike;
+	bool m_bUnitDemandEconomyCriticalGold;
+	bool m_bUnitDemandEconomyFinancialTrouble;
+	int m_iUnitDemandEconomyUnitCostPercent;
+	int m_iUnitDemandEconomyCacheTurn;
+	std::map<int, int> m_aiWaterAreaLiveUnitAICache;
+	std::map<int, int> m_aiWaterAreaTrainUnitAICache;
 
 	mutable volatile int m_iAveragesCacheTurn;
 

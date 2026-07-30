@@ -1101,6 +1101,17 @@ void CvCity::kill(bool bUpdatePlotGroups, bool bUpdateCulture)
 
 	CvPlot* pPlot = plot();
 
+	// Removing or replacing a coastal city changes which units on this plot
+	// supplement each adjacent water area's role supply.  Rebuild all player
+	// water/area caches at their next safe turn boundary.
+	for (int iPlayer = 0; iPlayer < MAX_PLAYERS; ++iPlayer)
+	{
+		if (GET_PLAYER((PlayerTypes)iPlayer).isAlive())
+		{
+			GET_PLAYER((PlayerTypes)iPlayer).AI_noteUnitRecalcNeeded();
+		}
+	}
+
 	// Take this plot out of zobrist hashes for local plot groups
 	pPlot->ToggleInPlotGroupsZobristContributors();
 
@@ -15523,7 +15534,40 @@ bool CvCity::pushFirstValidBuildListOrder(int iListID)
 	return false;
 }
 
-void CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bool bPop, bool bAppend, bool bForce, CvPlot* deliveryDestination, UnitAITypes contractedAIType, uint8_t contractFlags)
+bool CvCity::pushOrderChecked(OrderTypes eOrder, int iData1, int iData2, bool bSave, bool bPop, bool bAppend, bool bForce, CvPlot* deliveryDestination, UnitAITypes contractedAIType, uint8_t contractFlags)
+{
+	if (eOrder == ORDER_TRAIN && !bForce)
+	{
+		const UnitTypes eUnit = static_cast<UnitTypes>(iData1);
+		if (!canTrain(eUnit))
+		{
+			return false;
+		}
+
+		if (bAppend && !GET_PLAYER(getOwner()).isHumanPlayer(true))
+		{
+			int iAlreadyQueued = 0;
+			for (std::vector<OrderData>::const_iterator it = m_orderQueue.begin(); it != m_orderQueue.end(); ++it)
+			{
+				if (it->eOrderType == ORDER_TRAIN && it->getUnitType() == eUnit)
+				{
+					++iAlreadyQueued;
+				}
+			}
+			if ((iAlreadyQueued > 1 && getProductionTurnsLeft(eUnit, 2) > 2) || iAlreadyQueued > 4)
+			{
+				return false;
+			}
+		}
+	}
+
+	return pushOrder(
+		eOrder, iData1, iData2, bSave, bPop, bAppend, bForce,
+		deliveryDestination, contractedAIType, contractFlags
+	);
+}
+
+bool CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bool bPop, bool bAppend, bool bForce, CvPlot* deliveryDestination, UnitAITypes contractedAIType, uint8_t contractFlags)
 {
 	//bool bBuildingUnit = false;
 	//bool bBuildingBuilding = false;
@@ -15583,13 +15627,14 @@ void CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bo
 						const CvWString szStringUnitAi = GC.getUnitAIInfo(order.getUnitAIType()).getType();
 						logBBAI("    City %S unit %S for type %S is already in queue", getName().GetCString(), GC.getUnitInfo(unitType).getDescription(getCivilizationType()), szStringUnitAi.GetCString());
 					}
-					return;
+					return false;
 				}
 
 				owner.changeUnitMaking(unitType, 1);
 
 				area()->changeNumTrainAIUnits(getOwner(), order.getUnitAIType(), 1);
 				owner.AI_changeNumTrainAIUnits(order.getUnitAIType(), 1);
+				owner.AI_changeWaterAreaTrainAIUnits(waterArea(), order.getUnitAIType(), 1);
 
 				CvEventReporter::getInstance().cityBuildingUnit(this, unitType);
 				setUnitListInvalid();
@@ -15624,7 +15669,7 @@ void CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bo
 					{
 						logBBAI("    City %S building %S already in queue", getName().GetCString(), GC.getBuildingInfo(buildingType).getDescription());
 					}
-					return;
+					return false;
 				}
 
 				NoteBuildingNoLongerConstructable(buildingType);
@@ -15694,7 +15739,7 @@ void CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bo
 
 	if (!bValid)
 	{
-		return;
+		return false;
 	}
 
 
@@ -15768,6 +15813,7 @@ void CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bo
 		gDLL->getInterfaceIFace()->setDirty(InfoPane_DIRTY_BIT, true);
 		gDLL->getInterfaceIFace()->setDirty(SelectionButtons_DIRTY_BIT, true);
 	}
+	return true;
 }
 
 void CvCity::popOrder(int orderIndex, bool bFinish, bool bChoose, bool bResolveList)
@@ -15812,6 +15858,7 @@ void CvCity::popOrder(int orderIndex, bool bFinish, bool bChoose, bool bResolveL
 
 			area()->changeNumTrainAIUnits(getOwner(), eTrainAIUnit, -1);
 			owner.AI_changeNumTrainAIUnits(eTrainAIUnit, -1);
+			owner.AI_changeWaterAreaTrainAIUnits(waterArea(), eTrainAIUnit, -1);
 
 			setUnitListInvalid();
 
@@ -16515,9 +16562,11 @@ bool CvCity::doCheckProduction()
 					{
 						area()->changeNumTrainAIUnits(getOwner(), order.getUnitAIType(), -1);
 						player.AI_changeNumTrainAIUnits(order.getUnitAIType(), -1);
+						player.AI_changeWaterAreaTrainAIUnits(waterArea(), order.getUnitAIType(), -1);
 						order.setUnitAIType(GC.getUnitInfo(eUpgradeUnit).getDefaultUnitAIType());
 						area()->changeNumTrainAIUnits(getOwner(), order.getUnitAIType(), 1);
 						player.AI_changeNumTrainAIUnits(order.getUnitAIType(), 1);
+						player.AI_changeWaterAreaTrainAIUnits(waterArea(), order.getUnitAIType(), 1);
 					}
 					player.changeUnitMaking(order.getUnitType(), 1);
 				}

@@ -68,6 +68,38 @@ public:
 
 	CvString getDescription() const;
 
+	bool operator==(const CvUnitSelectionCriteria& kOther) const
+	{
+		return m_eUnitAI == kOther.m_eUnitAI
+			&& m_eIgnoreAdvisor == kOther.m_eIgnoreAdvisor
+			&& m_eHealUnitCombat == kOther.m_eHealUnitCombat
+			&& m_eProperty == kOther.m_eProperty
+			&& m_eVisibility == kOther.m_eVisibility
+			&& m_bIgnoreNotUnitAIs == kOther.m_bIgnoreNotUnitAIs
+			&& m_bIgnoreGrowth == kOther.m_bIgnoreGrowth
+			&& m_bPropertyBeneficial == kOther.m_bPropertyBeneficial
+			&& m_bNoNegativeProperties == kOther.m_bNoNegativeProperties
+			&& m_bIsHealer == kOther.m_bIsHealer
+			&& m_bIsCommander == kOther.m_bIsCommander
+			&& m_bIsCommodore == kOther.m_bIsCommodore;
+	}
+
+	bool operator<(const CvUnitSelectionCriteria& kOther) const
+	{
+		if (m_eUnitAI != kOther.m_eUnitAI) return m_eUnitAI < kOther.m_eUnitAI;
+		if (m_eIgnoreAdvisor != kOther.m_eIgnoreAdvisor) return m_eIgnoreAdvisor < kOther.m_eIgnoreAdvisor;
+		if (m_eHealUnitCombat != kOther.m_eHealUnitCombat) return m_eHealUnitCombat < kOther.m_eHealUnitCombat;
+		if (m_eProperty != kOther.m_eProperty) return m_eProperty < kOther.m_eProperty;
+		if (m_eVisibility != kOther.m_eVisibility) return m_eVisibility < kOther.m_eVisibility;
+		if (m_bIgnoreNotUnitAIs != kOther.m_bIgnoreNotUnitAIs) return m_bIgnoreNotUnitAIs < kOther.m_bIgnoreNotUnitAIs;
+		if (m_bIgnoreGrowth != kOther.m_bIgnoreGrowth) return m_bIgnoreGrowth < kOther.m_bIgnoreGrowth;
+		if (m_bPropertyBeneficial != kOther.m_bPropertyBeneficial) return m_bPropertyBeneficial < kOther.m_bPropertyBeneficial;
+		if (m_bNoNegativeProperties != kOther.m_bNoNegativeProperties) return m_bNoNegativeProperties < kOther.m_bNoNegativeProperties;
+		if (m_bIsHealer != kOther.m_bIsHealer) return m_bIsHealer < kOther.m_bIsHealer;
+		if (m_bIsCommander != kOther.m_bIsCommander) return m_bIsCommander < kOther.m_bIsCommander;
+		return m_bIsCommodore < kOther.m_bIsCommodore;
+	}
+
 	int getHash() const
 	{
 		int	iResult = (m_eUnitAI << 16);
