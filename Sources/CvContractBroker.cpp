@@ -1149,7 +1149,7 @@ bool CvContractBroker::makeContract(CvUnit* pUnit, int& iAtX, int& iAtY, CvUnit*
 
 			if (-1 != iWorkRequest)
 			{
-				const workRequest* contractedRequest = findWorkRequest(iWorkRequest);
+				workRequest* contractedRequest = findWorkRequest(iWorkRequest);
 				if(contractedRequest == NULL)
 				{
 					m_advertisingUnits[iI].iContractedWorkRequest = -1;
@@ -1160,8 +1160,19 @@ bool CvContractBroker::makeContract(CvUnit* pUnit, int& iAtX, int& iAtY, CvUnit*
 				iAtX = contractedRequest->iAtX;
 				iAtY = contractedRequest->iAtY;
 
-				pJoinUnit = findUnit(contractedRequest->iUnitId);
-				FAssert(NULL != pJoinUnit);
+				pJoinUnit = NULL;
+				if (contractedRequest->iUnitId != -1)
+				{
+					pJoinUnit = findUnit(contractedRequest->iUnitId);
+					if (pJoinUnit == NULL)
+					{
+						logContractBroker(1, "     <%S>work request %d invalidated because join unit %d no longer exists",
+							m_ownerName, contractedRequest->iWorkRequestId, contractedRequest->iUnitId);
+						contractedRequest->bFulfilled = true;
+						m_advertisingUnits[iI].iContractedWorkRequest = -1;
+						return false;
+					}
+				}
 				return true;
 			}
 			return false;
@@ -1170,7 +1181,7 @@ bool CvContractBroker::makeContract(CvUnit* pUnit, int& iAtX, int& iAtY, CvUnit*
 	return false;
 }
 
-const workRequest* CvContractBroker::findWorkRequest(int iWorkRequestId) const
+workRequest* CvContractBroker::findWorkRequest(int iWorkRequestId)
 {
 	PROFILE_FUNC();
 

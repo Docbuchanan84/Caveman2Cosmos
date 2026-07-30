@@ -203,7 +203,7 @@ private:
 	void changeOutstandingProduction(const AIUnitDemandKey& kKey, int iChange);
 	void finalizeProductionDemands(std::vector<bool>& tenderUsed);
 
-	const workRequest* findWorkRequest(int iWorkRequestId) const;
+	workRequest* findWorkRequest(int iWorkRequestId);
 	workRequest* findWorkRequestByUnitId(int userId);
 	advertisingUnit* findBestUnit(const workRequest& request, bool bThisPlotOnly);
 	CvUnit* findUnit(int iUnitId) const;
