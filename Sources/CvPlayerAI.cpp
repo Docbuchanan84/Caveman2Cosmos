@@ -388,6 +388,7 @@ void CvPlayerAI::AI_reset(bool bConstructor)
 	m_iUnitDemandEconomyCacheTurn = -1;
 	m_aiWaterAreaLiveUnitAICache.clear();
 	m_aiWaterAreaTrainUnitAICache.clear();
+	m_bWaterAreaUnitAICacheValid = false;
 }
 
 
@@ -419,7 +420,7 @@ void CvPlayerAI::AI_doTurnPre()
 	else
 	{
 #ifdef _DEBUG
-		if (!AI_validateWaterAreaUnitAICache())
+		if (m_bWaterAreaUnitAICacheValid && !AI_validateWaterAreaUnitAICache())
 		{
 			FErrorMsg("Water-area UnitAI supplemental cache miscount");
 		}
@@ -11978,10 +11979,15 @@ void CvPlayerAI::AI_rebuildWaterAreaUnitAICache()
 			}
 		}
 	}
+	m_bWaterAreaUnitAICacheValid = true;
 }
 
 bool CvPlayerAI::AI_validateWaterAreaUnitAICache() const
 {
+	if (!m_bWaterAreaUnitAICacheValid)
+	{
+		return false;
+	}
 	std::map<int, int> aiExpectedLive;
 	std::map<int, int> aiExpectedTrain;
 
@@ -12052,34 +12058,38 @@ bool CvPlayerAI::AI_validateWaterAreaUnitAICache() const
 
 void CvPlayerAI::AI_changeWaterAreaTrainAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange)
 {
-	if (pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
+	if (!m_bWaterAreaUnitAICacheValid || pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
 	{
 		return;
 	}
 	const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
-	m_aiWaterAreaTrainUnitAICache[iKey] += iChange;
-	FASSERT_NOT_NEGATIVE(m_aiWaterAreaTrainUnitAICache[iKey]);
-	if (m_aiWaterAreaTrainUnitAICache[iKey] < 0)
+	const int iNewValue = m_aiWaterAreaTrainUnitAICache[iKey] + iChange;
+	FASSERT_NOT_NEGATIVE(iNewValue);
+	if (iNewValue < 0)
 	{
-		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-training cached=%d action=rebuild", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaTrainUnitAICache[iKey]);
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-training cached=%d change=%d action=invalidate", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaTrainUnitAICache[iKey], iChange);
 		AI_noteUnitRecalcNeeded();
+		return;
 	}
+	m_aiWaterAreaTrainUnitAICache[iKey] = iNewValue;
 }
 
 void CvPlayerAI::AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange)
 {
-	if (pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
+	if (!m_bWaterAreaUnitAICacheValid || pWaterArea == NULL || eUnitAI == NO_UNITAI || iChange == 0)
 	{
 		return;
 	}
 	const int iKey = pWaterArea->getID() * NUM_UNITAI_TYPES + (int)eUnitAI;
-	m_aiWaterAreaLiveUnitAICache[iKey] += iChange;
-	FASSERT_NOT_NEGATIVE(m_aiWaterAreaLiveUnitAICache[iKey]);
-	if (m_aiWaterAreaLiveUnitAICache[iKey] < 0)
+	const int iNewValue = m_aiWaterAreaLiveUnitAICache[iKey] + iChange;
+	FASSERT_NOT_NEGATIVE(iNewValue);
+	if (iNewValue < 0)
 	{
-		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-live cached=%d action=rebuild", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaLiveUnitAICache[iKey]);
+		logBBAI("AI_UNIT_RECONCILE player=%d area=%d role=%d kind=water-live cached=%d change=%d action=invalidate", getID(), pWaterArea->getID(), (int)eUnitAI, m_aiWaterAreaLiveUnitAICache[iKey], iChange);
 		AI_noteUnitRecalcNeeded();
+		return;
 	}
+	m_aiWaterAreaLiveUnitAICache[iKey] = iNewValue;
 }
 
 AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const
@@ -35956,6 +35966,7 @@ void CvPlayerAI::AI_changeNumBuildingsNeeded(BuildingTypes eBuilding, int iChang
 void CvPlayerAI::AI_noteUnitRecalcNeeded()
 {
 	bUnitRecalcNeeded = true;
+	m_bWaterAreaUnitAICacheValid = false;
 }
 
 void CvPlayerAI::AI_recalculateUnitCounts()

@@ -693,6 +693,7 @@ protected:
 	int m_iUnitDemandEconomyCacheTurn;
 	std::map<int, int> m_aiWaterAreaLiveUnitAICache;
 	std::map<int, int> m_aiWaterAreaTrainUnitAICache;
+	bool m_bWaterAreaUnitAICacheValid;
 
 	mutable volatile int m_iAveragesCacheTurn;
 
