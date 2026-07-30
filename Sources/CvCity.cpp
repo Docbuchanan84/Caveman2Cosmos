@@ -272,6 +272,22 @@ void CvCity::init(int iID, PlayerTypes eOwner, int iX, int iY, bool bBumpUnits, 
 	pPlot->setOwner(getOwner(), bBumpUnits, false);
 	pPlot->setPlotCity(this);
 
+	// Founding a coastal city makes units already on this plot part of that
+	// water area's supplemental UnitAI supply without moving them through setXY.
+	// Keep valid per-player caches in step with the new plot-city relationship.
+	const CvArea* pWaterArea = waterArea();
+	if (pWaterArea != NULL)
+	{
+		foreach_(const CvUnit* pLoopUnit, pPlot->units())
+		{
+			const UnitAITypes eUnitAI = pLoopUnit->AI_getUnitAIType();
+			if (!pLoopUnit->isTempUnit() && eUnitAI != NO_UNITAI)
+			{
+				GET_PLAYER(pLoopUnit->getOwner()).AI_changeWaterAreaLiveAIUnits(pWaterArea, eUnitAI, 1);
+			}
+		}
+	}
+
 	updateCultureLevel(false);
 
 	pPlot->changeCulture(getOwner(), GC.getFREE_CITY_CULTURE(), bBumpUnits);
