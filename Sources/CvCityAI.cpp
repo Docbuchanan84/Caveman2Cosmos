@@ -1135,10 +1135,17 @@ void CvCityAI::AI_chooseProduction()
 	AIUnitDemandTarget kInfiltratorDemand;
 	kInfiltratorDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, 1);
 
+	UnitTypes eBestAttackDemandUnit = NO_UNIT;
+	UnitTypes eBestAttackCityDemandUnit = NO_UNIT;
+	player.AI_bestCityUnitAIValue(UNITAI_ATTACK, NULL, &eBestAttackDemandUnit);
+	player.AI_bestCityUnitAIValue(UNITAI_ATTACK_CITY, NULL, &eBestAttackCityDemandUnit);
+	const int iAttackDemandUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+		eBestAttackDemandUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+	const int iAttackCityDemandUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+		eBestAttackCityDemandUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+
 	int iMaxUnitSpending = AI_evaluateMaxUnitSpending(); 
 	
-	int iCarriers = player.AI_totalUnitAIs(UNITAI_CARRIER_SEA);
-
 	//Afforess reduced 12 -> 6, since AI rarely reaches this logic, Added exemption for MAD players
 	const int NukeProbRNG = !GC.getGame().isOption(GAMEOPTION_AI_RUTHLESS) ? 6 : 3;
 	const int iNukesWanted = 1 + 2 * std::min(player.getNumCities(), GC.getGame().getNumCities() - player.getNumCities());
@@ -1929,7 +1936,7 @@ void CvCityAI::AI_chooseProduction()
 					iSettlerSeaNeeded = std::min(1, iSettlerSeaNeeded);
 				}
 
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_SETTLER_SEA) < iSettlerSeaNeeded)
+				if (player.AI_getUnitRoleSupply(UNITAI_SETTLER_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply < iSettlerSeaNeeded)
 				{
 					/* financial trouble: 2/3; */
 					if (iDangerValue < 5 && bFinancialTrouble && iWorkersInArea < 5 * iNeededWorkersInArea && iWorkersNeeded > 0
@@ -1942,7 +1949,9 @@ void CvCityAI::AI_chooseProduction()
 						bChooseWorker = true;
 					}
 
-					if (AI_chooseUnit("sea settler needed", UNITAI_SETTLER_SEA))
+					AIUnitDemandTarget kSeaSettlerDemand;
+					kSeaSettlerDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iSettlerSeaNeeded);
+					if (AI_chooseUnitForWave2Demand("sea settler needed", AI_UNIT_DEMAND_POLICY_SETTLER_SEA, UNITAI_SETTLER_SEA, kSeaSettlerDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea))
 					{
 						return;
 					}
@@ -2237,9 +2246,9 @@ void CvCityAI::AI_chooseProduction()
 			&& player.AI_countNumLocalNavy(plot(), 4) < 2
 			&&
 			(
-				AI_chooseUnit("minimal navy", UNITAI_ATTACK_SEA) ||
-				AI_chooseUnit("minimal navy", UNITAI_PIRATE_SEA) ||
-				AI_chooseUnit("minimal navy", UNITAI_RESERVE_SEA)
+				AI_chooseUnitEconomicallyGated("minimal navy", UNITAI_ATTACK_SEA, AI_UNIT_DEMAND_STRATEGIC) ||
+				AI_chooseUnitEconomicallyGated("minimal navy", UNITAI_PIRATE_SEA, AI_UNIT_DEMAND_STRATEGIC) ||
+				AI_chooseUnitEconomicallyGated("minimal navy", UNITAI_RESERVE_SEA, AI_UNIT_DEMAND_STRATEGIC)
 				)
 			) return;
 
@@ -2265,8 +2274,10 @@ void CvCityAI::AI_chooseProduction()
 
 				// BBAI TODO: Really only want to do this if no good area city sites ... 13% chance on water heavy maps
 				// of slow start, little benefit
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_SETTLER_SEA) == 0
-					&& AI_chooseUnit("settler sea", UNITAI_SETTLER_SEA, iOdds))
+				AIUnitDemandTarget kSeaSettlerDemand;
+				kSeaSettlerDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, 1);
+				if (player.AI_getUnitRoleSupply(UNITAI_SETTLER_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply == 0
+					&& AI_chooseUnitForWave2Demand("settler sea", AI_UNIT_DEMAND_POLICY_SETTLER_SEA, UNITAI_SETTLER_SEA, kSeaSettlerDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea, iOdds))
 				{
 					return;
 				}
@@ -2416,10 +2427,14 @@ void CvCityAI::AI_chooseProduction()
 			iStartAttackStackRand += iBuildUnitProb / 2;
 		}
 
-		const int iAttackCityCount = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK_CITY);
-		const int iAttackCount = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK);
-		int iAttackCityTarget = 3 + iBuildUnitProb / 10; 
-		int iAttackTarget = 3 + iBuildUnitProb / 10;
+		const int iAttackCityCount = player.AI_getUnitRoleSupply(
+			UNITAI_ATTACK_CITY, AI_UNIT_DEMAND_LAND_AREA, pArea,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+		const int iAttackCount = player.AI_getUnitRoleSupply(
+			UNITAI_ATTACK, AI_UNIT_DEMAND_LAND_AREA, pArea,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+		int iAttackCityTarget = (3 + iBuildUnitProb / 10) * iAttackCityDemandUnitVolume;
+		int iAttackTarget = (3 + iBuildUnitProb / 10) * iAttackDemandUnitVolume;
 
 		//Calvitix Boost if Warmonger (Conquest Victory > 35)
 		if (bIsWarMonger)
@@ -2453,18 +2468,24 @@ void CvCityAI::AI_chooseProduction()
 				iAttackCityTarget = iAttackCityTarget * 25 / 100;
 				iAttackTarget = iAttackTarget * 25 / 100;
 			}
+			iAttackTarget = std::max(iAttackDemandUnitVolume, iAttackTarget);
+			iAttackCityTarget = std::max(iAttackCityDemandUnitVolume, iAttackCityTarget);
+			AIUnitDemandTarget kAttackDemand;
+			kAttackDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iAttackTarget);
+			AIUnitDemandTarget kAttackCityDemand;
+			kAttackCityDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iAttackCityTarget);
 			LOG_BBAI_CITY(2, ("#32 City %S, Will Start to build an Attack Stack, StackRand = %d. For the moment : Attack : %d / %d and Attack_City : %d / %d", getName().GetCString(), iStartAttackStackRand, iAttackCount, iAttackTarget, iAttackCityCount, iAttackCityTarget));
 			if (iAttackCount == 0)
 			{
 				if (!bFinancialTrouble
-					&& AI_chooseUnit("build attack force", UNITAI_ATTACK))
+					&& AI_chooseUnitForMeasuredDemand("build attack force", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					return;
 				}
 			}
 			else if (iAttackCount > 1 && iAttackCityCount == 0)
 			{
-				if (AI_chooseUnit("start city attack stack", UNITAI_ATTACK_CITY))
+				if (AI_chooseUnitForMeasuredDemand("start city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					return;
 				}
@@ -2478,12 +2499,12 @@ void CvCityAI::AI_chooseProduction()
 						LOG_BBAI_CITY(3, ("#32 City %S, Attack Stack add Attack Unit Order. For the moment : Attack : %d and Attack_City : %d", getName().GetCString(), iAttackCount, iAttackCityCount));
 						if (GC.getGame().getSorenRandNum(4, "AI prefer collateral") == 0)
 						{
-							if (AI_chooseUnit("add Collateral unit to stack", UNITAI_COLLATERAL))
+							if (AI_chooseUnitEconomicallyGated("add Collateral unit to stack", UNITAI_COLLATERAL, AI_UNIT_DEMAND_STRATEGIC))
 							{
 								return;
 							}
 						}
-						if (AI_chooseUnit("add to attack stack", UNITAI_ATTACK))
+						if (AI_chooseUnitForMeasuredDemand("add to attack stack", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 						{
 							return;
 						}
@@ -2492,12 +2513,12 @@ void CvCityAI::AI_chooseProduction()
 				LOG_BBAI_CITY(3, ("#32 City %S, Attack Stack add Attack_City Unit Order. For the moment : Attack : %d and Attack_City : %d", getName().GetCString(), iAttackCount, iAttackCityCount));
 				if (GC.getGame().getSorenRandNum(5, "AI prefer collateral") == 0)
 				{
-					if (AI_chooseUnit("add Collateral unit to stack", UNITAI_COLLATERAL))
+					if (AI_chooseUnitEconomicallyGated("add Collateral unit to stack", UNITAI_COLLATERAL, AI_UNIT_DEMAND_STRATEGIC))
 					{
 						return;
 					}
 				}
-				if (AI_chooseUnit("add to city attack stack", UNITAI_ATTACK_CITY))
+				if (AI_chooseUnitForMeasuredDemand("add to city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					return;
 				}
@@ -2574,10 +2595,14 @@ void CvCityAI::AI_chooseProduction()
 		const int iSpreadUnitRoll = (bLandWar ? 0 : 10) + (100 - iBuildUnitProb) / 3;
 
 		if (AI_bestSpreadUnit(true, true, iSpreadUnitRoll, &eBestSpreadUnit, &iBestSpreadUnitValue)
-			&& iBestSpreadUnitValue > iSpreadUnitThreshold
-			&& AI_chooseUnit(eBestSpreadUnit, UNITAI_MISSIONARY))
+			&& iBestSpreadUnitValue > iSpreadUnitThreshold)
 		{
-			return;
+			AIUnitDemandTarget kSpreadDemand;
+			kSpreadDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, player.getUnitCountPlusMaking(eBestSpreadUnit) + 1);
+			if (AI_chooseExactUnitForDemand("spread unit", AI_UNIT_DEMAND_POLICY_SPREAD_UNIT, eBestSpreadUnit, UNITAI_MISSIONARY, kSpreadDemand))
+			{
+				return;
+			}
 		}
 	}
 
@@ -2656,9 +2681,11 @@ void CvCityAI::AI_chooseProduction()
 	{
 		// don't build frivolous things if this is an important city unless we at war
 		//	Koshling in early game moved optional non-wartime attack unit builds below economy
+		AIUnitDemandTarget kOptionalAttackDemand;
+		kOptionalAttackDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, iAttackDemandUnitVolume);
 		if (bPrimaryArea && eCurrentEra != 0
-			&& player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK) == 0
-			&& AI_chooseUnit("optional attack", UNITAI_ATTACK))
+			&& player.AI_getUnitRoleSupply(UNITAI_ATTACK, AI_UNIT_DEMAND_LAND_AREA, pArea, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply == 0
+			&& AI_chooseUnitForMeasuredDemand("optional attack", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kOptionalAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 		{
 			return;
 		}
@@ -2723,7 +2750,16 @@ void CvCityAI::AI_chooseProduction()
 		//keep between 3 to 8 nukes, at least for early considerations
 		const int iNukesNeeded = std::max(3, std::min((GC.getGame().getNumCities() - player.getNumCities()) / 5, 8));
 
-		if (player.AI_totalUnitAIs(UNITAI_ICBM) < iNukesNeeded && AI_chooseUnit("ICBM", UNITAI_ICBM))
+		UnitTypes eBestNukeUnit = NO_UNIT;
+		player.AI_bestCityUnitAIValue(UNITAI_ICBM, NULL, &eBestNukeUnit);
+		const int iNukeTarget = iNukesNeeded * std::max(1,
+			player.AI_getUnitDemandUnitContribution(eBestNukeUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+		AIUnitDemandTarget kNukeDemand;
+		kNukeDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, iNukeTarget);
+		if (player.AI_getUnitRoleSupply(
+			UNITAI_ICBM, AI_UNIT_DEMAND_PLAYER, NULL,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply < iNukeTarget
+			&& AI_chooseUnitForMeasuredDemand("ICBM", AI_UNIT_DEMAND_POLICY_NUCLEAR, UNITAI_ICBM, kNukeDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL))
 		{
 			return;
 		}
@@ -2803,9 +2839,14 @@ void CvCityAI::AI_chooseProduction()
 	m_iTempBuildPriority--;
 
 	//#51 Missionaries (Prio2)
-	if (!bInhibitUnits && !bDanger && iBestSpreadUnitValue > iSpreadUnitThreshold * (bLandWar ? 80 : 60) / 100 && AI_chooseUnit(eBestSpreadUnit, UNITAI_MISSIONARY))
+	if (!bInhibitUnits && !bDanger && iBestSpreadUnitValue > iSpreadUnitThreshold * (bLandWar ? 80 : 60) / 100)
 	{
-		return;
+		AIUnitDemandTarget kSpreadDemand;
+		kSpreadDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, player.getUnitCountPlusMaking(eBestSpreadUnit) + 1);
+		if (AI_chooseExactUnitForDemand("spread unit (2)", AI_UNIT_DEMAND_POLICY_SPREAD_UNIT, eBestSpreadUnit, UNITAI_MISSIONARY, kSpreadDemand))
+		{
+			return;
+		}
 	}
 
 	m_iTempBuildPriority--;
@@ -2830,11 +2871,19 @@ void CvCityAI::AI_chooseProduction()
 	m_iTempBuildPriority--;
 
 	//#54 Early game 1x Attack Unit, if war or assault
-	if (!bInhibitUnits && bPrimaryArea && (!bImportantCity || bLandWar || bAssault)	&& eCurrentEra == 0 && player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK) == 0 && AI_chooseUnit("primary area attack", UNITAI_ATTACK))
+	if (!bInhibitUnits && bPrimaryArea && (!bImportantCity || bLandWar || bAssault)	&& eCurrentEra == 0
+		&& player.AI_getUnitRoleSupply(UNITAI_ATTACK, AI_UNIT_DEMAND_LAND_AREA, pArea, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply == 0)
 	{
+		AIUnitDemandTarget kPrimaryAttackDemand;
+		kPrimaryAttackDemand.setDesiredThrough(
+			(bLandWar || bAssault) ? AI_UNIT_DEMAND_STRATEGIC : AI_UNIT_DEMAND_OPTIONAL,
+			iAttackDemandUnitVolume);
+		if (AI_chooseUnitForMeasuredDemand("primary area attack", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kPrimaryAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
+		{
 		// Koshling in early game moved optional non-wartime attack unit builds below economy
 		// don't build frivolous things if this is an important city unless we at war
-		return;
+			return;
+		}
 	}
 
 	m_iTempBuildPriority--;
@@ -2924,11 +2973,20 @@ void CvCityAI::AI_chooseProduction()
 					}
 				}
 				// Additional check for air defenses
-				int iFightersHave = player.AI_totalUnitAIs(UNITAI_DEFENSE_AIR);
+				UnitTypes eBestDefenseAircraft = NO_UNIT;
+				player.AI_bestCityUnitAIValue(UNITAI_DEFENSE_AIR, NULL, &eBestDefenseAircraft);
+				const int iFighterUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+					eBestDefenseAircraft, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+				int iFightersHave = player.AI_getUnitRoleSupply(
+					UNITAI_DEFENSE_AIR, AI_UNIT_DEMAND_PLAYER, NULL,
+					AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+				const int iFighterTarget = ((iAircraftNeed + 2) / 3) * iFighterUnitVolume;
 
-				if (3 * iFightersHave < iAircraftNeed)
+				if (iFightersHave < iFighterTarget)
 				{
-					if (AI_chooseUnit("need air defense", UNITAI_DEFENSE_AIR))
+					AIUnitDemandTarget kFighterDemand;
+					kFighterDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iFighterTarget);
+					if (AI_chooseUnitForMeasuredDemand("need air defense", AI_UNIT_DEMAND_POLICY_DEFENSE_AIR, UNITAI_DEFENSE_AIR, kFighterDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL))
 					{
 						return;
 					}
@@ -2978,20 +3036,31 @@ void CvCityAI::AI_chooseProduction()
 			int iBestSeaAssaultCapacity = 0;
 			if (eBestAssaultUnit != NO_UNIT)
 			{
-				iBestSeaAssaultCapacity = GC.getUnitInfo(eBestAssaultUnit).getCargoSpace();
+				iBestSeaAssaultCapacity = player.AI_getUnitDemandUnitContribution(
+					eBestAssaultUnit, AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY);
 			}
 
-			int iAreaAttackCityUnits = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK_CITY);
+			int iAreaAttackCityUnits = player.AI_getUnitRoleSupply(
+				UNITAI_ATTACK_CITY, AI_UNIT_DEMAND_LAND_AREA, pArea,
+				AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME).iEffectiveSupply;
 
 			int iUnitsToTransport = iAreaAttackCityUnits;
-			iUnitsToTransport += player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK);
-			iUnitsToTransport += player.AI_totalAreaUnitAIs(pArea, UNITAI_COUNTER) / 2;
+			iUnitsToTransport += player.AI_getUnitRoleSupply(
+				UNITAI_ATTACK, AI_UNIT_DEMAND_LAND_AREA, pArea,
+				AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME).iEffectiveSupply;
+			iUnitsToTransport += player.AI_getUnitRoleSupply(
+				UNITAI_COUNTER, AI_UNIT_DEMAND_LAND_AREA, pArea,
+				AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME).iEffectiveSupply / 2;
 
-			int iLocalTransports = player.AI_totalAreaUnitAIs(pArea, UNITAI_ASSAULT_SEA);
+			int iLocalTransports = 0;
 			int iTransportsAtSea = 0;
 			if (NULL != pAssaultWaterArea)
 			{
-				iTransportsAtSea = player.AI_totalAreaUnitAIs(pAssaultWaterArea, UNITAI_ASSAULT_SEA);
+				const int iWaterTransportCapacity = player.AI_getUnitRoleSupply(
+					UNITAI_ASSAULT_SEA, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea,
+					AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply;
+				iTransportsAtSea = iWaterTransportCapacity / std::max(1, iBestSeaAssaultCapacity);
+				iLocalTransports = iTransportsAtSea;
 			}
 			else
 			{
@@ -3005,16 +3074,25 @@ void CvCityAI::AI_chooseProduction()
 			//will return...
 
 			int iTransports = iLocalTransports + (bPrimaryArea ? iTransportsAtSea : iTransportsAtSea / 4);
-			int iTransportCapacity = iBestSeaAssaultCapacity * (iTransports);
+			int iTransportCapacity = NULL == pAssaultWaterArea
+				? iBestSeaAssaultCapacity * iTransports
+				: player.AI_getUnitRoleSupply(
+					UNITAI_ASSAULT_SEA, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea,
+					AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply;
 
 			if (NULL != pAssaultWaterArea)
 			{
-				int iEscorts = player.AI_totalAreaUnitAIs(pArea, UNITAI_ESCORT_SEA);
-				iEscorts += player.AI_totalAreaUnitAIs(pAssaultWaterArea, UNITAI_ESCORT_SEA);
+				UnitTypes eBestEscortSeaUnit = NO_UNIT;
+				player.AI_bestCityUnitAIValue(UNITAI_ESCORT_SEA, NULL, &eBestEscortSeaUnit);
+				const int iEscortUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+					eBestEscortSeaUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+				int iEscorts = player.AI_getUnitRoleSupply(
+					UNITAI_ESCORT_SEA, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea,
+					AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
 
 				int iTransportViability = player.AI_calculateUnitAIViability(UNITAI_ASSAULT_SEA, DOMAIN_SEA);
 
-				int iDesiredEscorts = ((1 + 2 * iTransports) / 3);
+				int iDesiredEscorts = ((1 + 2 * iTransports) / 3) * iEscortUnitVolume;
 				if (iTransportViability > 95)
 				{
 					// Transports are stronger than escorts (usually Galleons and Caravels)
@@ -3028,7 +3106,12 @@ void CvCityAI::AI_chooseProduction()
 						return;
 					}
 
-					if (AI_chooseUnit("sea escort", UNITAI_ESCORT_SEA, (iEscorts < iDesiredEscorts / 3) ? -1 : 50))
+					AIUnitDemandTarget kEscortDemand;
+					kEscortDemand.setDesiredThrough(
+						AI_UNIT_DEMAND_ESSENTIAL,
+						std::min(iEscortUnitVolume, iDesiredEscorts));
+					kEscortDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iDesiredEscorts);
+					if (AI_chooseUnitForMeasuredDemand("sea escort", AI_UNIT_DEMAND_POLICY_NAVAL_ESCORT, UNITAI_ESCORT_SEA, kEscortDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea, (iEscorts < iDesiredEscorts / 3) ? -1 : 50))
 					{
 						return;
 					}
@@ -3044,17 +3127,23 @@ void CvCityAI::AI_chooseProduction()
 						iDivisor = 5;
 					}
 
-					int iAttackSea = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK_SEA);
-					iAttackSea += player.AI_totalAreaUnitAIs(pAssaultWaterArea, UNITAI_ATTACK_SEA);
+					const int iAttackSeaUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+						eBestAttackSeaUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+					int iAttackSea = player.AI_getUnitRoleSupply(
+						UNITAI_ATTACK_SEA, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea,
+						AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+					const int iAttackSeaTarget = ((1 + 2 * iTransports) / iDivisor) * iAttackSeaUnitVolume;
 
-					if ((iAttackSea < ((1 + 2 * iTransports) / iDivisor)))
+					if (iAttackSea < iAttackSeaTarget)
 					{
 						if (AI_chooseBuilding(BUILDINGFOCUS_DOMAINSEA, 12))
 						{
 							return;
 						}
 
-						if (AI_chooseUnit("sea attack", UNITAI_ATTACK_SEA, (iUnitCostPercentage < iMaxUnitSpending) ? 50 : 20))
+						AIUnitDemandTarget kAttackSeaDemand;
+						kAttackSeaDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iAttackSeaTarget);
+						if (AI_chooseUnitForMeasuredDemand("sea attack", AI_UNIT_DEMAND_POLICY_NAVAL_ATTACK, UNITAI_ATTACK_SEA, kAttackSeaDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea, (iUnitCostPercentage < iMaxUnitSpending) ? 50 : 20))
 						{
 							return;
 						}
@@ -3070,7 +3159,9 @@ void CvCityAI::AI_chooseProduction()
 							return;
 						}
 
-						if (AI_chooseUnit("sea assault", UNITAI_ASSAULT_SEA))
+						AIUnitDemandTarget kTransportDemand;
+						kTransportDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iUnitsToTransport);
+						if (AI_chooseUnitForMeasuredDemand("sea assault", AI_UNIT_DEMAND_POLICY_NAVAL_TRANSPORT, UNITAI_ASSAULT_SEA, kTransportDemand, AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY, AI_UNIT_DEMAND_WATER_AREA, pAssaultWaterArea))
 						{
 							return;
 						}
@@ -3082,7 +3173,18 @@ void CvCityAI::AI_chooseProduction()
 			{
 				if (NULL != pAssaultWaterArea)
 				{
-					if (!bFinancialTrouble && iCarriers < (player.AI_totalUnitAIs(UNITAI_ASSAULT_SEA) / 4))
+					UnitTypes eBestCarrierDemandUnit = NO_UNIT;
+					player.AI_bestCityUnitAIValue(UNITAI_CARRIER_SEA, NULL, &eBestCarrierDemandUnit);
+					const int iCarrierUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+						eBestCarrierDemandUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+					const int iCarrierTarget = (player.AI_getUnitRoleSupply(
+						UNITAI_ASSAULT_SEA, AI_UNIT_DEMAND_PLAYER, NULL,
+						AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply
+						/ std::max(1, iBestSeaAssaultCapacity) / 4) * iCarrierUnitVolume;
+					const int iCarrierSupply = player.AI_getUnitRoleSupply(
+						UNITAI_CARRIER_SEA, AI_UNIT_DEMAND_PLAYER, NULL,
+						AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+					if (!bFinancialTrouble && iCarrierSupply < iCarrierTarget)
 					{
 						// Reduce chances of starting if city has low production
 						if (iProductionRank > (player.getNumCities() / 3) && GC.getGame().getSorenRandNum(100, "AI train carrier") < 30)
@@ -3092,7 +3194,9 @@ void CvCityAI::AI_chooseProduction()
 								return;
 							}
 
-							if (AI_chooseUnit("need carrier", UNITAI_CARRIER_SEA))
+							AIUnitDemandTarget kCarrierDemand;
+							kCarrierDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iCarrierTarget);
+							if (AI_chooseUnitForMeasuredDemand("need carrier", AI_UNIT_DEMAND_POLICY_CARRIER, UNITAI_CARRIER_SEA, kCarrierDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL))
 							{
 								return;
 							}
@@ -3153,9 +3257,11 @@ void CvCityAI::AI_chooseProduction()
 
 			if (iUnitCostPercentage < (iMaxUnitSpending))
 			{
-				int iMissileCarriers = player.AI_totalUnitAIs(UNITAI_MISSILE_CARRIER_SEA);
+				const int iMissileCarrierCapacity = player.AI_getUnitRoleSupply(
+					UNITAI_MISSILE_CARRIER_SEA, AI_UNIT_DEMAND_PLAYER, NULL,
+					AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply;
 
-				if (!bFinancialTrouble && iMissileCarriers > 0 && !bImportantCity)
+				if (!bFinancialTrouble && iMissileCarrierCapacity > 0 && !bImportantCity)
 				{
 					if ((iProductionRank <= ((player.getNumCities() / 2) + 1)))
 					{
@@ -3165,13 +3271,17 @@ void CvCityAI::AI_chooseProduction()
 						{
 							FAssert(GC.getUnitInfo(eBestMissileCarrierUnit).getDomainCargo() == DOMAIN_AIR);
 
-							int iMissileCarrierAirNeeded = iMissileCarriers * GC.getUnitInfo(eBestMissileCarrierUnit).getCargoSpace();
+							const int iMissileCarrierAirNeeded = iMissileCarrierCapacity;
+							const int iMissileAirSupply = player.AI_getUnitRoleSupply(
+								UNITAI_MISSILE_AIR, AI_UNIT_DEMAND_PLAYER, NULL,
+								AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME).iEffectiveSupply;
 
-							if ((player.AI_totalUnitAIs(UNITAI_MISSILE_AIR) < iMissileCarrierAirNeeded) ||
-								(bPrimaryArea && (player.AI_totalAreaUnitAIs(pArea, UNITAI_MISSILE_CARRIER_SEA) * GC.getUnitInfo(eBestMissileCarrierUnit).getCargoSpace() < player.AI_totalAreaUnitAIs(pArea, UNITAI_MISSILE_AIR))))
+							if (iMissileAirSupply < iMissileCarrierAirNeeded)
 							{
 								// Don't always build missiles, more likely if really low
-								if (AI_chooseUnit("need missiles", UNITAI_MISSILE_AIR, (player.AI_totalUnitAIs(UNITAI_MISSILE_AIR) < iMissileCarrierAirNeeded / 2) ? 50 : 20))
+								AIUnitDemandTarget kMissileAirDemand;
+								kMissileAirDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iMissileCarrierAirNeeded);
+								if (AI_chooseUnitForMeasuredDemand("need missiles", AI_UNIT_DEMAND_POLICY_MISSILE_AIR, UNITAI_MISSILE_AIR, kMissileAirDemand, AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL, (iMissileAirSupply < iMissileCarrierAirNeeded / 2) ? 50 : 20))
 								{
 									return;
 								}
@@ -3188,7 +3298,10 @@ void CvCityAI::AI_chooseProduction()
 	//#58 planes & aircraft fill carriers
 	if (!bInhibitUnits && (bLandWar || bAssault) && iUnitCostPercentage < (iMaxUnitSpending))
 	{
-		if (iCarriers > 0 && !bImportantCity)
+		const int iCarrierCapacity = player.AI_getUnitRoleSupply(
+			UNITAI_CARRIER_SEA, AI_UNIT_DEMAND_PLAYER, NULL,
+			AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply;
+		if (iCarrierCapacity > 0 && !bImportantCity)
 		{
 			UnitTypes eBestCarrierUnit = NO_UNIT;
 			player.AI_bestCityUnitAIValue(UNITAI_CARRIER_SEA, NULL, &eBestCarrierUnit);
@@ -3196,11 +3309,16 @@ void CvCityAI::AI_chooseProduction()
 			{
 				FAssert(GC.getUnitInfo(eBestCarrierUnit).getDomainCargo() == DOMAIN_AIR);
 
-				const int iCarrierAirNeeded = iCarriers * GC.getUnitInfo(eBestCarrierUnit).getCargoSpace();
+				const int iCarrierAirNeeded = iCarrierCapacity;
+				const int iCarrierAirSupply = player.AI_getUnitRoleSupply(
+					UNITAI_CARRIER_AIR, AI_UNIT_DEMAND_PLAYER, NULL,
+					AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME).iEffectiveSupply;
 
 				// Reduce chances if city gives no air experience
-				if (player.AI_totalUnitAIs(UNITAI_CARRIER_AIR) < iCarrierAirNeeded
-					&& AI_chooseUnit("need planes for carriers", UNITAI_CARRIER_AIR, iFreeAirExperience > 0 ? -1 : 35))
+				AIUnitDemandTarget kCarrierAirDemand;
+				kCarrierAirDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iCarrierAirNeeded);
+				if (iCarrierAirSupply < iCarrierAirNeeded
+					&& AI_chooseUnitForMeasuredDemand("need planes for carriers", AI_UNIT_DEMAND_POLICY_CARRIER_AIR, UNITAI_CARRIER_AIR, kCarrierAirDemand, AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL, iFreeAirExperience > 0 ? -1 : 35))
 				{
 					return;
 				}
@@ -3212,15 +3330,31 @@ void CvCityAI::AI_chooseProduction()
 	//#59 Nukes prio2
 	if (!bInhibitUnits && !bFinancialTrouble && (player.AI_isDoStrategy(AI_STRATEGY_OWABWNW) || GC.getGame().getSorenRandNum(NukeProbRNG, "AI consider Nuke") == 0))
 	{
-		if (player.AI_totalUnitAIs(UNITAI_ICBM) < iNukesWanted)
+		UnitTypes eBestNukeUnit = NO_UNIT;
+		player.AI_bestCityUnitAIValue(UNITAI_ICBM, NULL, &eBestNukeUnit);
+		const int iNukeUnitVolume = std::max(1, player.AI_getUnitDemandUnitContribution(
+			eBestNukeUnit, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME));
+		const int iNukeTarget = iNukesWanted * iNukeUnitVolume;
+		if (player.AI_getUnitRoleSupply(
+			UNITAI_ICBM, AI_UNIT_DEMAND_PLAYER, NULL,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply < iNukeTarget)
 		{
 			//Reordered, because nukes are more valuable than carriers
-			if (AI_chooseUnit("ICBM (2)", UNITAI_ICBM))
+			AIUnitDemandTarget kNukeDemand;
+			kNukeDemand.setDesiredThrough(
+				player.AI_isDoStrategy(AI_STRATEGY_OWABWNW)
+					? AI_UNIT_DEMAND_STRATEGIC : AI_UNIT_DEMAND_OPTIONAL,
+				iNukeTarget);
+			if (AI_chooseUnitForMeasuredDemand("ICBM (2)", AI_UNIT_DEMAND_POLICY_NUCLEAR, UNITAI_ICBM, kNukeDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_PLAYER, NULL))
 			{
 				return;
 			}
 
-			if (pWaterArea != NULL && AI_chooseUnit("need missile carrier", UNITAI_MISSILE_CARRIER_SEA, 50))
+			if (pWaterArea != NULL && AI_chooseUnitEconomicallyGated(
+				"need missile carrier", UNITAI_MISSILE_CARRIER_SEA,
+				player.AI_isDoStrategy(AI_STRATEGY_OWABWNW)
+					? AI_UNIT_DEMAND_STRATEGIC : AI_UNIT_DEMAND_OPTIONAL,
+				50))
 			{
 				return;
 			}
@@ -3280,9 +3414,19 @@ void CvCityAI::AI_chooseProduction()
 		if (!bFinancialTrouble)
 		{
 			// Force civs with foreign colonies to build a few assault transports to defend the colonies
-			if (player.AI_totalUnitAIs(UNITAI_ASSAULT_SEA) < (player.getNumCities() - iNumCapitalAreaCities) / 3)
+			const int iColonyTransportCount = (player.getNumCities() - iNumCapitalAreaCities) / 3;
+			UnitTypes eBestColonyTransport = NO_UNIT;
+			player.AI_bestCityUnitAIValue(UNITAI_ASSAULT_SEA, NULL, &eBestColonyTransport);
+			const int iColonyTransportTarget = iColonyTransportCount
+				* std::max(1, player.AI_getUnitDemandUnitContribution(
+					eBestColonyTransport, AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY));
+			if (player.AI_getUnitRoleSupply(
+				UNITAI_ASSAULT_SEA, AI_UNIT_DEMAND_PLAYER, NULL,
+				AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY).iEffectiveSupply < iColonyTransportTarget)
 			{
-				if (AI_chooseUnit("colony defense assault ships", UNITAI_ASSAULT_SEA))
+				AIUnitDemandTarget kColonyTransportDemand;
+				kColonyTransportDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iColonyTransportTarget);
+				if (AI_chooseUnitForMeasuredDemand("colony defense assault ships", AI_UNIT_DEMAND_POLICY_NAVAL_TRANSPORT, UNITAI_ASSAULT_SEA, kColonyTransportDemand, AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY, AI_UNIT_DEMAND_PLAYER, NULL))
 				{
 					return;
 				}
@@ -3293,7 +3437,7 @@ void CvCityAI::AI_chooseProduction()
 				// Force civs to build escorts for settler_sea units
 				if (player.AI_totalUnitAIs(UNITAI_SETTLER_SEA) > player.AI_getNumAIUnits(UNITAI_RESERVE_SEA))
 				{
-					if (AI_chooseUnit("sea settler escorts", UNITAI_RESERVE_SEA))
+					if (AI_chooseUnitEconomicallyGated("sea settler escorts", UNITAI_RESERVE_SEA, AI_UNIT_DEMAND_STRATEGIC))
 					{
 						return;
 					}
@@ -3308,7 +3452,7 @@ void CvCityAI::AI_chooseProduction()
 	if (!bInhibitUnits && (pWaterArea != NULL) && !bLandWar && !bAssault && !bFinancialTrouble/* && !bUnitExempt*/) //k-mod
 	{
 		//Arr.  Don't build pirates in financial trouble, as they'll be disbanded with high probability
-		int iPirateCount = player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_PIRATE_SEA);
+		int iPirateCount = player.AI_getUnitRoleSupply(UNITAI_PIRATE_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply;
 		int iNeededPirates = (1 + (pWaterArea->getNumTiles() / std::max(1, 200 - iBuildUnitProb)));
 		iNeededPirates *= (20 + iWaterPercent);
 		iNeededPirates /= 100;
@@ -3318,11 +3462,13 @@ void CvCityAI::AI_chooseProduction()
 			iNeededPirates *= 3;
 			iNeededPirates /= 2;
 		}
-		if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_PIRATE_SEA) < iNeededPirates)
+		if (iPirateCount < iNeededPirates)
 		{
 			if (player.AI_calculateUnitAIViability(UNITAI_PIRATE_SEA, DOMAIN_SEA) > 49)
 			{
-				if (AI_chooseUnit("pirates", UNITAI_PIRATE_SEA, iWaterPercent / (1 + iPirateCount)))
+				AIUnitDemandTarget kPirateDemand;
+				kPirateDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, iNeededPirates);
+				if (AI_chooseUnitForWave2Demand("pirates", AI_UNIT_DEMAND_POLICY_PIRATE, UNITAI_PIRATE_SEA, kPirateDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea, iWaterPercent / (1 + iPirateCount)))
 				{
 					return;
 				}
@@ -3339,9 +3485,11 @@ void CvCityAI::AI_chooseProduction()
 		{
 			if (player.AI_totalAreaUnitAIs(pArea, UNITAI_SPY) > 0)
 			{
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_SPY_SEA) == 0)
+				if (player.AI_getUnitRoleSupply(UNITAI_SPY_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply == 0)
 				{
-					if (AI_chooseUnit("sea spy", UNITAI_SPY_SEA))
+					AIUnitDemandTarget kSeaSpyDemand;
+					kSeaSpyDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, 1);
+					if (AI_chooseUnitForWave2Demand("sea spy", AI_UNIT_DEMAND_POLICY_SPY_SEA, UNITAI_SPY_SEA, kSeaSpyDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea))
 					{
 						return;
 					}
@@ -3355,7 +3503,9 @@ void CvCityAI::AI_chooseProduction()
 	//#64 Missionaries Round 3
 	if (!bInhibitUnits && iBestSpreadUnitValue > ((iSpreadUnitThreshold * 40) / 100))
 	{
-		if (AI_chooseUnit(eBestSpreadUnit, UNITAI_MISSIONARY))
+		AIUnitDemandTarget kSpreadDemand;
+		kSpreadDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, player.getUnitCountPlusMaking(eBestSpreadUnit) + 1);
+		if (AI_chooseExactUnitForDemand("spread unit (3)", AI_UNIT_DEMAND_POLICY_SPREAD_UNIT, eBestSpreadUnit, UNITAI_MISSIONARY, kSpreadDemand))
 		{
 			return;
 		}
@@ -3499,9 +3649,11 @@ void CvCityAI::AI_chooseProduction()
 		{
 			if (player.AI_totalAreaUnitAIs(pArea, UNITAI_MISSIONARY) > 0)
 			{
-				if (player.AI_totalWaterAreaUnitAIs(pWaterArea, UNITAI_MISSIONARY_SEA) == 0)
+				if (player.AI_getUnitRoleSupply(UNITAI_MISSIONARY_SEA, AI_UNIT_DEMAND_WATER_AREA, pWaterArea).iEffectiveSupply == 0)
 				{
-					if (AI_chooseUnit("sea missionary", UNITAI_MISSIONARY_SEA))
+					AIUnitDemandTarget kSeaMissionaryDemand;
+					kSeaMissionaryDemand.setDesiredThrough(AI_UNIT_DEMAND_OPTIONAL, 1);
+					if (AI_chooseUnitForWave2Demand("sea missionary", AI_UNIT_DEMAND_POLICY_MISSIONARY_SEA, UNITAI_MISSIONARY_SEA, kSeaMissionaryDemand, AI_UNIT_DEMAND_WATER_AREA, pWaterArea))
 					{
 						return;
 					}
@@ -3686,12 +3838,12 @@ void CvCityAI::AI_chooseProduction()
 	if (!bFinancialTrouble && player.AI_isDoStrategy(AI_STRATEGY_FINAL_WAR))
 	{
 		LOG_BBAI_CITY(2, ("#82      City %S build attack units for Final War", getName().GetCString()));
-		if (AI_chooseUnit("final war units", UNITAI_ATTACK))
+		if (AI_chooseUnitEconomicallyGated("final war units", UNITAI_ATTACK, AI_UNIT_DEMAND_STRATEGIC))
 		{
 			return;
 		}
 
-		if (AI_chooseUnit("final war units", UNITAI_ATTACK_CITY))
+		if (AI_chooseUnitEconomicallyGated("final war units", UNITAI_ATTACK_CITY, AI_UNIT_DEMAND_STRATEGIC))
 		{
 			return;
 		}
@@ -3739,18 +3891,27 @@ void CvCityAI::AI_chooseProduction()
 			amountWanted = std::max(6,amountWanted / 20);
 		}
 
-		const int iAttackCityCount = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK_CITY);
-		const int iAttackCount = player.AI_totalAreaUnitAIs(pArea, UNITAI_ATTACK);
-		int iAttackTarget = amountWanted * 2 / 3;
-		int iAttackCityTarget = amountWanted * 1 / 3;
+		const int iAttackCityCount = player.AI_getUnitRoleSupply(
+			UNITAI_ATTACK_CITY, AI_UNIT_DEMAND_LAND_AREA, pArea,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+		const int iAttackCount = player.AI_getUnitRoleSupply(
+			UNITAI_ATTACK, AI_UNIT_DEMAND_LAND_AREA, pArea,
+			AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME).iEffectiveSupply;
+		int iAttackTarget = std::max(iAttackDemandUnitVolume, amountWanted * 2 / 3 * iAttackDemandUnitVolume);
+		int iAttackCityTarget = std::max(iAttackCityDemandUnitVolume, amountWanted * 1 / 3 * iAttackCityDemandUnitVolume);
+		const int iCombinedTarget = iAttackTarget + iAttackCityTarget;
+		AIUnitDemandTarget kAttackDemand;
+		kAttackDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iAttackTarget);
+		AIUnitDemandTarget kAttackCityDemand;
+		kAttackCityDemand.setDesiredThrough(AI_UNIT_DEMAND_STRATEGIC, iAttackCityTarget);
 
-		if (iAttackCityCount + iAttackCount <= amountWanted)
+		if (iAttackCityCount + iAttackCount <= iCombinedTarget)
 		{
 			LOG_BBAI_CITY(2, ("#84 City %S, Will Start to build an Attack Stack, StackRand = %d. For the moment : Attack : %d / %d and Attack_City : %d / %d", getName().GetCString(), amountWanted, iAttackCount, iAttackTarget, iAttackCityCount, iAttackCityTarget));
 			if (iAttackCount == 0)
 			{
 				if (!bFinancialTrouble
-					&& AI_chooseUnit("build attack force", UNITAI_ATTACK))
+					&& AI_chooseUnitForMeasuredDemand("build attack force", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					LOG_BBAI_CITY(4, ("#84 City %S, Unit UNITAI_ATTACK ordered", getName().GetCString()));
 					return;
@@ -3758,7 +3919,7 @@ void CvCityAI::AI_chooseProduction()
 			}
 			else if (iAttackCount > 1 && iAttackCityCount == 0)
 			{
-				if (!bFinancialTrouble && AI_chooseUnit("start city attack stack", UNITAI_ATTACK_CITY))
+				if (!bFinancialTrouble && AI_chooseUnitForMeasuredDemand("start city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					LOG_BBAI_CITY(4, ("#84 City %S, Unit UNITAI_ATTACK_CITY ordered", getName().GetCString()));
 					return;
@@ -3773,13 +3934,13 @@ void CvCityAI::AI_chooseProduction()
 						LOG_BBAI_CITY(3, ("#84 City %S, Attack Stack add Attack Unit Order. For the moment : Attack : %d and Attack_City : %d", getName().GetCString(), iAttackCount, iAttackCityCount));
 						if (GC.getGame().getSorenRandNum(4, "AI prefer collateral") == 0)
 						{
-							if (AI_chooseUnit("add Best unit to stack", NO_UNITAI))
+							if (AI_chooseUnitEconomicallyGated("add Best unit to stack", NO_UNITAI, AI_UNIT_DEMAND_STRATEGIC))
 							{
 								LOG_BBAI_CITY(4, ("#84 City %S, Unit NO_UNITAI ordered", getName().GetCString()));
 								return;
 							}
 						}
-						if (AI_chooseUnit("add to attack stack", UNITAI_ATTACK))
+						if (AI_chooseUnitForMeasuredDemand("add to attack stack", AI_UNIT_DEMAND_POLICY_ATTACK, UNITAI_ATTACK, kAttackDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 						{
 							LOG_BBAI_CITY(4, ("#84 City %S, Unit UNITAI_ATTACK ordered", getName().GetCString()));
 							return;
@@ -3789,13 +3950,13 @@ void CvCityAI::AI_chooseProduction()
 				LOG_BBAI_CITY(3, ("#84 City %S, Attack Stack add Attack_City Unit Order. For the moment : Attack : %d and Attack_City : %d", getName().GetCString(), iAttackCount, iAttackCityCount));
 				if (GC.getGame().getSorenRandNum(5, "AI prefer collateral") == 0)
 				{
-					if (AI_chooseUnit("add Best unit to stack", NO_UNITAI))
+					if (AI_chooseUnitEconomicallyGated("add Best unit to stack", NO_UNITAI, AI_UNIT_DEMAND_STRATEGIC))
 					{
 						LOG_BBAI_CITY(4, ("#84 City %S, Unit NO_UNITAI ordered", getName().GetCString()));
 						return;
 					}
 				}
-				if (AI_chooseUnit("add to city attack stack", UNITAI_ATTACK_CITY))
+				if (AI_chooseUnitForMeasuredDemand("add to city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
 					LOG_BBAI_CITY(4, ("#84 City %S, Unit UNITAI_ATTACK_CITY ordered", getName().GetCString()));
 					return;
@@ -8875,9 +9036,24 @@ bool CvCityAI::AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyType
 	);
 }
 
+bool CvCityAI::AI_chooseUnitForWave2Demand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
+{
+#ifdef USE_AI_UNIT_DEMAND_WAVE2
+	return AI_chooseUnitForDemand(reason, ePolicy, eUnitAI, kTarget, eScope, pArea, iOdds, iPriorityOverride, criteria);
+#else
+	return AI_chooseUnit(reason, eUnitAI, iOdds, -1, iPriorityOverride, criteria);
+#endif
+}
+
 bool CvCityAI::AI_chooseUnitForMeasuredDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
 {
 #if defined(USE_UNIT_TENDERING) && defined(USE_AI_UNIT_DEMAND_ACCOUNTING)
+#if !defined(USE_AI_UNIT_DEMAND_WAVE2)
+	if (eMeasure != AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT)
+	{
+		return AI_chooseUnit(reason, eUnitAI, iOdds, -1, iPriorityOverride, criteria);
+	}
+#endif
 	if (isNPC() || m_iRequestedUnit > MAX_REQUESTEDUNIT_PER_CITY)
 	{
 		return false;
@@ -8968,10 +9144,12 @@ bool CvCityAI::AI_chooseExactUnitForDemand(const char* reason, AIUnitDemandPolic
 
 bool CvCityAI::AI_chooseUnitEconomicallyGated(const char* reason, UnitAITypes eUnitAI, AIUnitDemandClassTypes eDemandClass, int iOdds, const CvUnitSelectionCriteria* criteria)
 {
+#ifdef USE_AI_UNIT_DEMAND_WAVE2
 	if (!isNPC() && !GET_PLAYER(getOwner()).AI_isUnitDemandClassAllowed(eDemandClass, AI_evaluateMaxUnitSpending()))
 	{
 		return false;
 	}
+#endif
 	return AI_chooseUnit(reason, eUnitAI, iOdds, -1, -1, criteria);
 }
 

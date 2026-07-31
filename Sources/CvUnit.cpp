@@ -15984,6 +15984,7 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 		if (AI_getUnitAIType() != NO_UNITAI)
 		{
 			pNewPlot->area()->changeNumAIUnits(eMyPlayer, AI_getUnitAIType(), 1);
+			GET_PLAYER(eMyPlayer).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pNewPlot, 1);
 			const CvCity* pNewCity = pNewPlot->getPlotCity();
 			GET_PLAYER(eMyPlayer).AI_changeWaterAreaLiveAIUnits(
 				pNewCity == NULL ? NULL : pNewCity->waterArea(),
@@ -16020,6 +16021,7 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 		if (AI_getUnitAIType() != NO_UNITAI)
 		{
 			pOldPlot->area()->changeNumAIUnits(eMyPlayer, AI_getUnitAIType(), -1);
+			GET_PLAYER(eMyPlayer).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pOldPlot, -1);
 			const CvCity* pOldCity = pOldPlot->getPlotCity();
 			GET_PLAYER(eMyPlayer).AI_changeWaterAreaLiveAIUnits(
 				pOldCity == NULL ? NULL : pOldCity->waterArea(),
@@ -35466,9 +35468,11 @@ int CvUnit::getExtraGroup() const
 
 void CvUnit::changeExtraGroup(int iChange)
 {
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
 	GET_PLAYER(getOwner()).changeUnitCountSM(m_eUnitType, -intPow(3, groupRank()-1));
 	m_iExtraGroup += iChange;
 	GET_PLAYER(getOwner()).changeUnitCountSM(m_eUnitType, intPow(3, groupRank()-1));
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
 }
 
 int CvUnit::getExtraSize() const
@@ -36189,9 +36193,11 @@ void CvUnit::changeSMCargoSpace(int iChange)
 {
 	if (iChange != 0)
 	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
 		m_iSMCargoCapacity += iChange;
 		FASSERT_NOT_NEGATIVE(m_iSMCargoCapacity);
 		setInfoBarDirty(true);
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
 	}
 }
 
@@ -36220,10 +36226,12 @@ int CvUnit::getSMCargoCapacity() const
 
 void CvUnit::setSMCargoCapacity()
 {
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
 	m_iSMCargoCapacity = applySMRank(
 		SMcargoCapacityPreCheck(), getSizeMattersSpacialOffsetValue(), GC.getSIZE_MATTERS_MOST_VOLUMETRIC_MULTIPLIER()
 		);
 	FASSERT_NOT_NEGATIVE(m_iSMCargoCapacity);
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
 }
 
 int CvUnit::getExtraMaxHP() const
@@ -36333,7 +36341,9 @@ int CvUnit::getCargoVolume() const
 
 void CvUnit::setCargoVolume(int iNewValue)
 {
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
 	m_iSMCargoVolume = iNewValue;
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
 }
 
 void CvUnit::changeCargoVolume(int iChange)
@@ -36375,6 +36385,7 @@ int CvUnit::SMCargoVolume() const
 
 void CvUnit::setSMCargoVolume()
 {
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
 	m_iSMCargoVolume =
 	(
 		std::max(
@@ -36386,6 +36397,7 @@ void CvUnit::setSMCargoVolume()
 			)
 		)
 	);
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
 }
 
 int CvUnit::getSizeMattersOffsetValue() const

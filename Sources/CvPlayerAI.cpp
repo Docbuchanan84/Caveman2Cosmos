@@ -12284,6 +12284,50 @@ void CvPlayerAI::AI_changeMeasuredUnitDemandTraining(UnitTypes eUnit, UnitAIType
 	}
 }
 
+void CvPlayerAI::AI_changeMeasuredUnitDemandLive(const CvUnit* pUnit, UnitAITypes eUnitAI, const CvPlot* pPlot, int iChange)
+{
+	if (!m_bMeasuredUnitDemandCacheValid || pUnit == NULL || eUnitAI == NO_UNITAI || iChange == 0)
+	{
+		return;
+	}
+	for (int iMeasure = AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME;
+		iMeasure < NUM_AI_UNIT_DEMAND_MEASURES; ++iMeasure)
+	{
+		const AIUnitDemandMeasureTypes eMeasure = (AIUnitDemandMeasureTypes)iMeasure;
+		const int iContribution = AI_getUnitDemandLiveContribution(pUnit, eMeasure) * iChange;
+		if (iContribution == 0)
+		{
+			continue;
+		}
+		const AIUnitDemandSupplyIndex kPlayerIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_PLAYER, -1);
+		m_aiMeasuredUnitDemandLiveCache[kPlayerIndex] += iContribution;
+		if (pPlot != NULL)
+		{
+			const CvArea* pArea = pPlot->area();
+			if (pArea != NULL)
+			{
+				m_aiMeasuredUnitDemandLiveCache[AIUnitDemandSupplyIndex(
+					eUnitAI, eMeasure,
+					pArea->isWater() ? AI_UNIT_DEMAND_WATER_AREA : AI_UNIT_DEMAND_LAND_AREA,
+					pArea->getID())] += iContribution;
+			}
+			const CvCity* pPlotCity = pPlot->getPlotCity();
+			const CvArea* pWaterArea = pPlotCity == NULL ? NULL : pPlotCity->waterArea();
+			if (pWaterArea != NULL)
+			{
+				m_aiMeasuredUnitDemandLiveCache[AIUnitDemandSupplyIndex(
+					eUnitAI, eMeasure, AI_UNIT_DEMAND_WATER_AREA, pWaterArea->getID())] += iContribution;
+			}
+		}
+		if (m_aiMeasuredUnitDemandLiveCache[kPlayerIndex] < 0)
+		{
+			logBBAI("AI_UNIT_RECONCILE player=%d role=%d measure=%d kind=measured-live action=invalidate", getID(), (int)eUnitAI, (int)eMeasure);
+			AI_noteUnitRecalcNeeded();
+			return;
+		}
+	}
+}
+
 AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea, AIUnitDemandMeasureTypes eMeasure) const
 {
 	AIUnitRoleSupply kResult;

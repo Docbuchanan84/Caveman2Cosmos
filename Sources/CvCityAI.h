@@ -680,6 +680,7 @@ protected:
 
 	bool AI_chooseUnit(const char* reason, UnitAITypes eUnitAI /*= NO_UNITAI*/, int iOdds = -1, int iUnitStrength = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
 	bool AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
+	bool AI_chooseUnitForWave2Demand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
 	bool AI_chooseUnitForMeasuredDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
 	bool AI_chooseExactUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitTypes eUnit, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, int iOdds = -1, int iPriorityOverride = -1, const CvUnitSelectionCriteria* criteria = NULL);
 	bool AI_chooseUnitEconomicallyGated(const char* reason, UnitAITypes eUnitAI, AIUnitDemandClassTypes eDemandClass, int iOdds = -1, const CvUnitSelectionCriteria* criteria = NULL);

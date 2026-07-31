@@ -310,6 +310,7 @@ public:
 	bool AI_validateMeasuredUnitDemandCache() const;
 	int AI_getMeasuredUnitDemandSupply(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId, bool bTraining) const;
 	void AI_changeMeasuredUnitDemandTraining(UnitTypes eUnit, UnitAITypes eUnitAI, const CvCity* pCity, int iChange);
+	void AI_changeMeasuredUnitDemandLive(const CvUnit* pUnit, UnitAITypes eUnitAI, const CvPlot* pPlot, int iChange);
 	void AI_rebuildWaterAreaUnitAICache();
 	bool AI_validateWaterAreaUnitAICache() const;
 	void AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange);
