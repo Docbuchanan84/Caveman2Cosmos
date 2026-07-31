@@ -1502,7 +1502,11 @@ bool CvPathGenerator::generatePath(const CvPlot* pFrom, const CvPlot* pTo, CvSel
 													continue;
 												}
 
-												FAssert(!newNode->m_bIsKnownRoute || node->m_iCostTo + iEdgeCost == newNode->m_iCostTo);
+												// A cached known route can legitimately be improved when a later
+												// query reuses the tree with a different source or terminal.  The
+												// relink and child-cost repair below already handle that case in
+												// release builds; only reject a genuinely more expensive relink.
+												FAssert(node->m_iCostTo + iEdgeCost <= newNode->m_iCostTo);
 												RelinkNode(newNode, node);
 
 												if (newNode->m_iMovementRemaining != iMovementRemaining

@@ -15449,8 +15449,12 @@ void CvUnit::changeCargoSpace(int iChange)
 {
 	if (iChange != 0)
 	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+			this, AI_getUnitAIType(), plot(), -1);
 		m_iCargoCapacity += iChange;
 		setInfoBarDirty(true);
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+			this, AI_getUnitAIType(), plot(), 1);
 	}
 }
 
@@ -15909,6 +15913,13 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 
 	CvPlot* pNewPlot = GC.getMap().plot(iX, iY);
 	CvPlot* pOldPlot = plot();
+	if (AI_getUnitAIType() != NO_UNITAI)
+	{
+		// Remove the unit's registered measured-demand snapshot before any
+		// initialization or movement mutates its location or Size Matters state.
+		GET_PLAYER(eMyPlayer).AI_changeMeasuredUnitDemandLive(
+			this, AI_getUnitAIType(), pOldPlot, -1);
+	}
 
 	//	Koshling - Forcing the unit into a new group causes rapid cycling through the group id
 	//	space, which is a scaling issue, so only do it when necessary
@@ -16021,7 +16032,6 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 		if (AI_getUnitAIType() != NO_UNITAI)
 		{
 			pOldPlot->area()->changeNumAIUnits(eMyPlayer, AI_getUnitAIType(), -1);
-			GET_PLAYER(eMyPlayer).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pOldPlot, -1);
 			const CvCity* pOldCity = pOldPlot->getPlotCity();
 			GET_PLAYER(eMyPlayer).AI_changeWaterAreaLiveAIUnits(
 				pOldCity == NULL ? NULL : pOldCity->waterArea(),
@@ -16838,8 +16848,12 @@ void CvUnit::changeCargo(int iChange)
 
 void CvUnit::SMchangeCargo(int iChange)
 {
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+		this, AI_getUnitAIType(), plot(), -1);
 	m_iSMCargo += iChange;
 	FAssertOptionRecalcMsg(GAMEOPTION_COMBAT_SIZE_MATTERS, SMgetCargo() >= 0, "Transported cargo is less than 0");
+	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+		this, AI_getUnitAIType(), plot(), 1);
 }
 
 void CvUnit::getCargoUnits(std::vector<CvUnit*>& aUnits) const

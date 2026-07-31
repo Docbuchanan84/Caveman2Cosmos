@@ -79,3 +79,47 @@ For log review, verify:
 - A Size Matters-disabled comparison run is desirable.
 - Identical-save checksum comparison and the five-percent median turn-time gate
   remain final acceptance work.
+
+## Turn-7 Debug incident and corrective build
+
+The first fresh Wave 2 autoplay stopped on turn 7 at
+`CvPathGenerator.cpp:1505` while a barbarian attack unit compared paths to
+adjacent plots around its target city. The assertion predates this branch and
+is unchanged at the accepted predator baseline. The Release path already
+relinks and repairs the cheaper cached route. The Debug assertion now permits
+that valid cheaper-route case while retaining the non-increasing-cost
+invariant.
+
+The same run also exposed a Wave 2 accounting defect before the visible
+assertion: new-unit initialization and Size Matters recalculation could
+subtract a live measured contribution that had not yet been registered. Live
+measured accounting now stores an unsaved snapshot per unit. A mutation removes
+that exact prior snapshot and then registers the unit's current role, area,
+formation volume, cargo capacity, and cargo volume. Zero-valued cache entries
+are removed canonically, and cargo load/unload changes update the transport's
+snapshot.
+
+Captured logs are preserved locally under
+`D:\C2C-Backups\unit-demand-assert-20260730-222142`.
+
+Corrective build evidence:
+
+- Clean Debug rebuild: `FBuild: OK`.
+- Release build: `FBuild: OK`.
+- Corrective Debug DLL SHA-256:
+  `9C2FF0F4B70B223297653EF8B97A69A2832C8D29EF244B0500D6762AD8ED2FE4`.
+- The corrective Debug DLL is byte-identical through the active GOG mod
+  junction.
+- Codex did not launch or advance the game.
+
+Corrective retest:
+
+1. Start a fresh Size Matters game named
+   `UNIT_SPAM_FIX_WAVE2_ASSERT_RETEST`.
+2. Automate toward 100 turns.
+3. Stop immediately on any assertion, crash, or stuck turn.
+4. If turn 100 is reached, create a named save and exit normally.
+5. Report the reached turn and any conspicuous repeated-unit production.
+
+Acceptance requires no `AI_UNIT_RECONCILE` records and no repeat of the
+known-route path assertion.

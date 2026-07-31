@@ -31,6 +31,30 @@ struct MissionTargetInfo
 	int iVolume;    //  How much volume among the units counted
 };
 
+// Unsaved snapshot of one live unit's contribution to measured production demand.
+// Keeping the previous contribution lets initialization, promotions, movement, and
+// Size Matters recalculation replace exactly what was registered for the unit.
+struct AIMeasuredUnitDemandLiveSnapshot
+{
+	AIMeasuredUnitDemandLiveSnapshot()
+		: eUnitAI(NO_UNITAI)
+		, eAreaScope(AI_UNIT_DEMAND_PLAYER)
+		, iAreaId(-1)
+		, iCoastalWaterAreaId(-1)
+	{
+		for (int i = 0; i < NUM_AI_UNIT_DEMAND_MEASURES; ++i)
+		{
+			aiContribution[i] = 0;
+		}
+	}
+
+	UnitAITypes eUnitAI;
+	AIUnitDemandScopeTypes eAreaScope;
+	int iAreaId;
+	int iCoastalWaterAreaId;
+	int aiContribution[NUM_AI_UNIT_DEMAND_MEASURES];
+};
+
 //	Koshling - add caching to plot danger calculations
 #define PLOT_DANGER_CACHING
 #ifdef PLOT_DANGER_CACHING
@@ -311,6 +335,7 @@ public:
 	int AI_getMeasuredUnitDemandSupply(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId, bool bTraining) const;
 	void AI_changeMeasuredUnitDemandTraining(UnitTypes eUnit, UnitAITypes eUnitAI, const CvCity* pCity, int iChange);
 	void AI_changeMeasuredUnitDemandLive(const CvUnit* pUnit, UnitAITypes eUnitAI, const CvPlot* pPlot, int iChange);
+	void AI_applyMeasuredUnitDemandLiveSnapshot(const AIMeasuredUnitDemandLiveSnapshot& kSnapshot, int iChange);
 	void AI_rebuildWaterAreaUnitAICache();
 	bool AI_validateWaterAreaUnitAICache() const;
 	void AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange);
@@ -703,6 +728,7 @@ protected:
 	bool m_bWaterAreaUnitAICacheValid;
 	std::map<AIUnitDemandSupplyIndex, int> m_aiMeasuredUnitDemandLiveCache;
 	std::map<AIUnitDemandSupplyIndex, int> m_aiMeasuredUnitDemandTrainCache;
+	std::map<int, AIMeasuredUnitDemandLiveSnapshot> m_aiMeasuredUnitDemandLiveSnapshots;
 	bool m_bMeasuredUnitDemandCacheValid;
 
 	mutable volatile int m_iAveragesCacheTurn;
