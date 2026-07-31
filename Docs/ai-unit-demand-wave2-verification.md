@@ -232,3 +232,73 @@ Automated runtime verification, authorized after the load failure:
 This closes the targeted load and hunter/escort replay. The longer fresh-game,
 late-game naval/air/nuclear, deterministic checksum, and performance gates
 remain broader Wave 2 acceptance work.
+
+## Turn-82 exhausted-hunter incident
+
+A later fresh autoplay stopped on turn 82 at `CvUnitAI.cpp:16733` when
+`AI_goody()` asserted that its caller supplied a unit which could still move.
+The fully flushed BBAI log identifies the exact sequence for Australian hunter
+unit 16391:
+
+- the Wanderer began with movement remaining at `(80,67)`;
+- `AI_groupMergeRange(UNITAI_HUNTER_ESCORT, 1, ...)` moved it one tile to its
+  escort at `(81,68)`;
+- that final terrain step consumed the hunter's remaining movement;
+- `AI_SearchAndDestroyMove()` intentionally continued after normalizing hunter
+  group leadership and later called `AI_goody(4)`.
+
+The merge helper may either merge on the current plot or issue a movement
+mission. Nearly every other successful caller returns immediately. This hunter
+path is intentionally allowed to continue after a zero-cost merge, so it now
+returns only when the merge leaves the hunter unable to move. Hunters with
+movement remaining retain the prior same-turn behavior. `AI_goody()` and the
+generic group-merge behavior are unchanged.
+
+Captured logs, the turn-60 autosave, and the failing Debug DLL/PDB are preserved
+under `D:\C2C-Backups\unit-demand-goody-assert-20260731-171834`.
+
+Corrective build evidence:
+
+- Debug build and deployment: `FBuild: OK`.
+- Release build: `FBuild: OK`.
+- The deployed Debug DLL is byte-identical through the active GOG mod junction.
+
+The exact turn-60 autosave replay advanced through turn 87, beyond the original
+turn-82 failure, without an assertion window, crash, new minidump,
+`AI_UNIT_RECONCILE` record, or `PythonErr.log` entry. The replay exercised both
+sides of the new guard: one hunter used its last movement point joining an
+escort and stopped, while another merged on its current plot and continued
+moving with the escort. The user then disabled automation and created the
+`LATEST_FIXES` save before exiting normally.
+
+The deployed Debug DLL matched the built Debug DLL at SHA-256
+`407EDEE6FFAB225299A6A67F71FCAE516EF9E241C831B2C8F38DC2CF366E627A`.
+The Release DLL built at SHA-256
+`D0ADF2DEFA031AF31D7E1247CF4C5E53ECD7D5285E7B9F5D588A02010749F2CD`.
+
+## Post-replay demand-accounting review
+
+The retained Contract Broker diagnostics contain 69 typed-demand admission
+observations over turns 60 through 85. Their accounting checks produced:
+
+- zero `effective != existing + training + pending` violations;
+- zero cases where pending exceeded `desired - existing - training`;
+- zero invalid scope, selector, target, or policy admissions;
+- 13 accepted, one refreshed, 13 no-deficit, one partially gated, and 41
+  economically rejected admission outcomes;
+- 14 successful commitments, six no-eligible-tender outcomes, two economic
+  recheck failures, and five queue rejections.
+
+The unsuccessful fulfillment outcomes did not consume a reservation and did
+not create a reconciliation error. They are expected transient outcomes when
+the economy changes between admission and tendering or when the available city
+cannot accept another matching order. No collected evidence indicates that the
+Wave 1 or Wave 2 demand-accounting behavior is exceeding a target, losing a
+successful queue commitment, or allowing stale transient demand to accumulate.
+
+The remaining concerns are balance and breadth of coverage rather than a known
+correctness defect. In particular, large early hunter targets can legitimately
+produce several Wanderers while the economy permits it; longer play will show
+whether the existing hunter target formula itself should be tuned. Naval, air,
+and nuclear policies still require later-era observation, but they do not block
+moving on from the accounting implementation.

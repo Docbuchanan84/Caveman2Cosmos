@@ -27811,6 +27811,14 @@ void CvUnitAI::AI_SearchAndDestroyMove(bool bWithCommander)
 				}
 			}
 
+			// AI_groupMergeRange may have moved the hunter onto its escort.  If
+			// that final step used all available movement, do not continue into
+			// movement helpers such as AI_goody(), which require canMove().
+			if (!canMove())
+			{
+				return;
+			}
+
 		}
 		else
 		{
