@@ -283,7 +283,13 @@ void CvCity::init(int iID, PlayerTypes eOwner, int iX, int iY, bool bBumpUnits, 
 			const UnitAITypes eUnitAI = pLoopUnit->AI_getUnitAIType();
 			if (!pLoopUnit->isTempUnit() && eUnitAI != NO_UNITAI)
 			{
-				GET_PLAYER(pLoopUnit->getOwner()).AI_changeWaterAreaLiveAIUnits(pWaterArea, eUnitAI, 1);
+				CvPlayerAI& kUnitOwner = GET_PLAYER(pLoopUnit->getOwner());
+				kUnitOwner.AI_changeWaterAreaLiveAIUnits(pWaterArea, eUnitAI, 1);
+				// The measured-demand snapshot was registered before this plot
+				// became a city.  Replace it so coastal-water formation and cargo
+				// supply immediately includes the newly founded city association.
+				kUnitOwner.AI_changeMeasuredUnitDemandLive(
+					pLoopUnit, eUnitAI, pPlot, 1);
 			}
 		}
 	}

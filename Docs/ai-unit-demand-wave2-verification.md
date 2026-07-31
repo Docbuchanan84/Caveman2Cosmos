@@ -123,3 +123,53 @@ Corrective retest:
 
 Acceptance requires no `AI_UNIT_RECONCILE` records and no repeat of the
 known-route path assertion.
+
+## Turn-42 hunter-escort incident
+
+The corrective autoplay reached turn 42 before stopping at
+`CvSelectionGroup.cpp:5224`. The captured log identifies the exact sequence:
+
+- Celtic hunter unit 16385 repeatedly requested an escort.
+- Keleia completed hunter-escort unit 16391 on the hunter's plot.
+- The hunter's `AI_SearchAndDestroyMove()` called
+  `AI_groupMergeRange(UNITAI_HUNTER_ESCORT, ...)`.
+- Generic group merging attempted to preserve the escort group's head role by
+  converting the higher-priority hunter into a hunter escort, violating the
+  long-standing assertion that a hunter must not be converted during merge.
+
+For this exact hunter-to-escort pairing, the escort group now merges into the
+hunter group. The hunter therefore remains the higher-priority head and both
+units retain their intended roles. Generic group-merging behavior is unchanged.
+
+The same log contained four measured-cache rebuilds. Each occurred on the
+first player turn after a delayed coastal-city founding. Units already on the
+founding plot gained a coastal-water association without moving, so their
+measured snapshots were stale. City founding now replaces those units'
+snapshots immediately after the plot becomes a city, matching the existing
+object-count water-cache update.
+
+Captured evidence is preserved under
+`D:\C2C-Backups\unit-demand-hunter-assert-20260731-080256`, including the
+turn-30 autosave and fully flushed AI logs.
+
+Build evidence:
+
+- Debug build: `FBuild: OK`.
+- Release build: `FBuild: OK`.
+- Debug DLL SHA-256:
+  `426115FB8212A6C5C5234FA6EF48F068699B0CC38C2A9B698CB89E5C4CDC9106`.
+- Release DLL SHA-256:
+  `37CB6CE4EC1B0BAAAC2713BE5A070E9F5733C3F033A2CF76B7B7E9AEA831FD6E`.
+- The Debug DLL is deployed and byte-identical through the active GOG mod
+  junction. Codex did not launch or advance the game.
+
+Targeted retest:
+
+1. Load `AutoSave_30 - BC-195395` from the autosave list.
+2. Automate through at least turn 45.
+3. Stop on any assertion, crash, or stuck turn.
+4. If turn 45 is reached, save as `UNIT_SPAM_FIX_WAVE2_HUNTER_RETEST` and exit
+   normally.
+
+This targeted replay validates the exact hunter/escort merge. A subsequent
+fresh run is still required to exercise the corrected city-founding cache path.

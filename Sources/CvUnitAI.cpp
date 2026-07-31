@@ -11988,7 +11988,18 @@ bool CvUnitAI::AI_groupMergeRange(UnitAITypes eUnitAI, int iMaxRange, bool bBigg
 		{
 			pBestUnit->getGroup()->pushMission(MISSION_SKIP, -1, -1, 0, false, false, NO_MISSIONAI);
 			pGroup->pushMission(MISSION_SKIP, -1, -1, 0, false, false, NO_MISSIONAI);
-			pGroup->mergeIntoGroup(pBestUnit->getGroup());
+			if (AI_getUnitAIType() == UNITAI_HUNTER && eUnitAI == UNITAI_HUNTER_ESCORT)
+			{
+				// Hunters deliberately have a higher group-leader priority than
+				// their escorts.  Merge the escort group into the hunter group so
+				// the generic merge code does not convert the hunter to the escort
+				// role while trying to preserve the destination group's head AI.
+				pBestUnit->getGroup()->mergeIntoGroup(pGroup);
+			}
+			else
+			{
+				pGroup->mergeIntoGroup(pBestUnit->getGroup());
+			}
 			return true;
 		}
 		int idist = plotDistance(plot()->getX(), plot()->getY(), pBestUnit->plot()->getX(), pBestUnit->plot()->getY());
