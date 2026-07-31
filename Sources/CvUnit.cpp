@@ -15449,12 +15449,19 @@ void CvUnit::changeCargoSpace(int iChange)
 {
 	if (iChange != 0)
 	{
-		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
-			this, AI_getUnitAIType(), plot(), -1);
+		CvPlot* pUnitPlot = plot();
+		if (pUnitPlot != NULL)
+		{
+			GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+				this, AI_getUnitAIType(), pUnitPlot, -1);
+		}
 		m_iCargoCapacity += iChange;
 		setInfoBarDirty(true);
-		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
-			this, AI_getUnitAIType(), plot(), 1);
+		if (pUnitPlot != NULL)
+		{
+			GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+				this, AI_getUnitAIType(), pUnitPlot, 1);
+		}
 	}
 }
 
@@ -15913,7 +15920,7 @@ void CvUnit::setXY(int iX, int iY, bool bGroup, bool bUpdate, bool bShow, bool b
 
 	CvPlot* pNewPlot = GC.getMap().plot(iX, iY);
 	CvPlot* pOldPlot = plot();
-	if (AI_getUnitAIType() != NO_UNITAI)
+	if (pOldPlot != NULL && AI_getUnitAIType() != NO_UNITAI)
 	{
 		// Remove the unit's registered measured-demand snapshot before any
 		// initialization or movement mutates its location or Size Matters state.
@@ -16848,12 +16855,19 @@ void CvUnit::changeCargo(int iChange)
 
 void CvUnit::SMchangeCargo(int iChange)
 {
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
-		this, AI_getUnitAIType(), plot(), -1);
+	CvPlot* pUnitPlot = plot();
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+			this, AI_getUnitAIType(), pUnitPlot, -1);
+	}
 	m_iSMCargo += iChange;
 	FAssertOptionRecalcMsg(GAMEOPTION_COMBAT_SIZE_MATTERS, SMgetCargo() >= 0, "Transported cargo is less than 0");
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
-		this, AI_getUnitAIType(), plot(), 1);
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(
+			this, AI_getUnitAIType(), pUnitPlot, 1);
+	}
 }
 
 void CvUnit::getCargoUnits(std::vector<CvUnit*>& aUnits) const
@@ -35482,11 +35496,18 @@ int CvUnit::getExtraGroup() const
 
 void CvUnit::changeExtraGroup(int iChange)
 {
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
+	CvPlot* pUnitPlot = plot();
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, -1);
+	}
 	GET_PLAYER(getOwner()).changeUnitCountSM(m_eUnitType, -intPow(3, groupRank()-1));
 	m_iExtraGroup += iChange;
 	GET_PLAYER(getOwner()).changeUnitCountSM(m_eUnitType, intPow(3, groupRank()-1));
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, 1);
+	}
 }
 
 int CvUnit::getExtraSize() const
@@ -36207,11 +36228,18 @@ void CvUnit::changeSMCargoSpace(int iChange)
 {
 	if (iChange != 0)
 	{
-		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
+		CvPlot* pUnitPlot = plot();
+		if (pUnitPlot != NULL)
+		{
+			GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, -1);
+		}
 		m_iSMCargoCapacity += iChange;
 		FASSERT_NOT_NEGATIVE(m_iSMCargoCapacity);
 		setInfoBarDirty(true);
-		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
+		if (pUnitPlot != NULL)
+		{
+			GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, 1);
+		}
 	}
 }
 
@@ -36238,14 +36266,24 @@ int CvUnit::getSMCargoCapacity() const
 	return m_iSMCargoCapacity;
 }
 
-void CvUnit::setSMCargoCapacity()
+void CvUnit::setSMCargoCapacity(bool bUpdateDemandCache)
 {
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
+	// CvUnit::read recalculates Size Matters values before CvUnitAI::read has
+	// restored the saved UnitAI and before every unit is guaranteed a plot.
+	// The complete post-load player recount registers the finished unit later.
+	CvPlot* pUnitPlot = bUpdateDemandCache ? plot() : NULL;
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, -1);
+	}
 	m_iSMCargoCapacity = applySMRank(
 		SMcargoCapacityPreCheck(), getSizeMattersSpacialOffsetValue(), GC.getSIZE_MATTERS_MOST_VOLUMETRIC_MULTIPLIER()
 		);
 	FASSERT_NOT_NEGATIVE(m_iSMCargoCapacity);
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, 1);
+	}
 }
 
 int CvUnit::getExtraMaxHP() const
@@ -36355,9 +36393,16 @@ int CvUnit::getCargoVolume() const
 
 void CvUnit::setCargoVolume(int iNewValue)
 {
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
+	CvPlot* pUnitPlot = plot();
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, -1);
+	}
 	m_iSMCargoVolume = iNewValue;
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, 1);
+	}
 }
 
 void CvUnit::changeCargoVolume(int iChange)
@@ -36397,9 +36442,13 @@ int CvUnit::SMCargoVolume() const
 	return std::max(1, getCargoVolume() == 0 ? getSMCargoVolumeBase() : getCargoVolume()) + isCarrier() * SMgetCargo();
 }
 
-void CvUnit::setSMCargoVolume()
+void CvUnit::setSMCargoVolume(bool bUpdateDemandCache)
 {
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), -1);
+	CvPlot* pUnitPlot = bUpdateDemandCache ? plot() : NULL;
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, -1);
+	}
 	m_iSMCargoVolume =
 	(
 		std::max(
@@ -36411,7 +36460,10 @@ void CvUnit::setSMCargoVolume()
 			)
 		)
 	);
-	GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), plot(), 1);
+	if (pUnitPlot != NULL)
+	{
+		GET_PLAYER(getOwner()).AI_changeMeasuredUnitDemandLive(this, AI_getUnitAIType(), pUnitPlot, 1);
+	}
 }
 
 int CvUnit::getSizeMattersOffsetValue() const
@@ -36756,8 +36808,8 @@ void CvUnit::setSMValues(bool bForLoad)
 	setSMHPValue();
 	setSMAssetValue(bForLoad);
 	setSMPowerValue(bForLoad);
-	setSMCargoCapacity();
-	setSMCargoVolume();
+	setSMCargoCapacity(!bForLoad);
+	setSMCargoVolume(!bForLoad);
 	setSMBombardRate();
 	setSMAirBombBaseRate();
 	setSMBaseWorkRate();

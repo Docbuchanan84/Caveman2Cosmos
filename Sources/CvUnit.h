@@ -2566,7 +2566,7 @@ public:
 	int SMcargoSpaceFilter() const;
 	int SMcargoCapacityPreCheck() const;
 	int getSMCargoCapacity() const;
-	void setSMCargoCapacity();
+	void setSMCargoCapacity(bool bUpdateDemandCache = true);
 
 	int getExtraMaxHP() const;
 	void changeExtraMaxHP(int iChange);
@@ -2593,7 +2593,7 @@ public:
 	int getCargoVolume() const;
 	void setCargoVolume(int iNewValue);
 	int SMCargoVolume() const;
-	void setSMCargoVolume();
+	void setSMCargoVolume(bool bUpdateDemandCache = true);
 
 
 	void changeCargoVolume(int iChange);

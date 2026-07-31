@@ -173,3 +173,62 @@ Targeted retest:
 
 This targeted replay validates the exact hunter/escort merge. A subsequent
 fresh run is still required to exercise the corrected city-founding cache path.
+
+## Turn-30 autosave load crash and automated verification
+
+The first attempt to load `AutoSave_30 - BC-195395` closed the game during
+unit deserialization. The preserved minidump resolves the failing stack to:
+
+```text
+CvPlot::area
+CvUnit::area
+CvUnitAI::AI_getUnitAIType
+CvUnit::setSMCargoCapacity
+CvUnit::setSMValues
+CvUnit::read
+CvUnitAI::read
+CvPlayer::read
+```
+
+`CvUnit::read()` recalculates Size Matters values before `CvUnitAI::read()`
+restores the saved UnitAI role and before the unit is guaranteed to have a
+plot. The new measured-demand mutation callback queried the incomplete unit's
+role, and the legacy `NO_UNITAI` repair path dereferenced its null area. The
+save itself was not corrupt.
+
+Size Matters load-time recalculation now suppresses incremental measured-demand
+callbacks for cargo capacity and cargo volume. The complete safe-boundary
+post-load recount remains authoritative. Related cargo, formation, and movement
+mutation hooks also require a valid plot before changing the live measured
+cache. Normal initialized-unit mutations retain incremental accounting.
+
+Captured crash evidence is preserved under
+`D:\C2C-Backups\unit-demand-load-crash-20260731-081529`, including the exact
+Debug DLL/PDB, minidump, logs, and failing autosave.
+
+Build evidence:
+
+- Debug build and deployment: `FBuild: OK`.
+- Release build: `FBuild: OK`.
+- Debug DLL SHA-256:
+  `B3B92282EE6ADBAC6F887F20CA1C6A7EC7BE6BF6AC39E8BEA0327703852BC615`.
+- Release DLL SHA-256:
+  `C1D69563277D115BA9EE0A992091BAC36D99770EA16ECEC4F34BEF6C026B3C3E`.
+- The deployed Debug DLL is byte-identical through the active GOG mod
+  junction.
+
+Automated runtime verification, authorized after the load failure:
+
+1. Loaded the exact previously crashing turn-30 autosave successfully.
+2. Used full automation for 15 turns, reaching turn 46 and passing the former
+   turn-42 hunter/escort assertion point.
+3. Observed no assertion window, crash, stuck turn, or new minidump.
+4. Found no `AI_UNIT_RECONCILE` record; the fresh `PythonErr.log` remained
+   empty.
+5. Saved turn 46 as `UNIT_DEMAND_LOAD_FIX_AUTOTEST_T46`, then loaded that new
+   save successfully and confirmed the turn-46 map state.
+6. Exited the game normally.
+
+This closes the targeted load and hunter/escort replay. The longer fresh-game,
+late-game naval/air/nuclear, deterministic checksum, and performance gates
+remain broader Wave 2 acceptance work.
