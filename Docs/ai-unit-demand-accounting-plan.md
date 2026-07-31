@@ -45,7 +45,7 @@ The stable demand key is:
 
 ```text
 owner + policy + selector + UnitAI/exact UnitType
-+ scope + area ID + complete selection criteria
++ measurement + scope + area ID + complete selection criteria
 ```
 
 Source city, priority, and economic class are not identity fields. Selection
@@ -200,13 +200,30 @@ authoritative target.
 
 ### Wave 2
 
-- Missionaries/executives use exact selected unit or explicit spread capability.
-- Explicit attack, attack-city, and collateral targets.
-- Naval transport, escort, attack-sea, carrier, missile-carrier, and pirate
-  targets.
-- Carrier aircraft, missile aircraft, other explicit aircraft, and nuclear
-  targets.
-- Sea spy, missionary, settler, and explorer targets with explicit needs.
+- Add object-count, formation-volume, cargo-capacity, and cargo-volume demand
+  measurements. Size Matters formation volume uses the same base-three group
+  scale as native merge/split accounting, so three companies merged into one
+  battalion retain the same production supply.
+- Keep a separate exact-unit pending index. Missionaries/executives reserve at
+  most one additional selected UnitType per owner production cycle; different
+  religions/corporations do not consume one another's exact demand.
+- Convert explicit attack, attack-city, naval escort/attack, fighter-defense,
+  carrier, and nuclear targets to formation volume. Random collateral and
+  least-represented composition choices remain outside target arithmetic and
+  receive only their economic-class gate.
+- Measure assault transports by cargo capacity and the land force intended for
+  transport by cargo volume. Measure carrier and missile payload supply by
+  cargo volume against live/queued carrier capacity.
+- Migrate numeric sea-settler, pirate, sea-spy, and sea-missionary targets using
+  ordinary water-area object counts.
+- Revalidate a tender by shrinking or withdrawing its admitted quantity; never
+  enlarge it after admission. One concrete unit may overshoot a measured target
+  by less than that unit's contribution.
+
+Measured caches are rebuilt at the owner safe boundary and maintained at queue
+push/pop/upgrade, unit creation/completion, role change, movement, death,
+merge/split group changes, and Size Matters cargo mutation points. Debug builds
+independently rebuild and compare those caches once per owner turn.
 
 Pending production is never included in danger, combat strength, attack odds,
 stack availability, bombard composition, or tactical force assessment.

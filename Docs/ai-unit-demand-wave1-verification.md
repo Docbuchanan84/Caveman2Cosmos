@@ -232,22 +232,9 @@ deployed. Codex did not launch or advance the game.
 - Latest Release DLL SHA-256:
   `4746A2BB459DDF644D30F8A3B6EF5671C3DACD994E5EC0DDBCED666B96551911`
 
-## Remaining runtime gate
+## Superseded runtime gate
 
-Before Wave 2:
-
-1. Start one short fresh game with the latest Debug DLL and advance at least
-   three full turns to confirm that tender fulfillment never exceeds the
-   admitted economic quantity.
-2. Load `UNIT_SPAM_FIX_TEST_FRESH_RETEST_2`, advance at least five full turns,
-   save under a new name, exit, reload that new save, and advance at least five
-   more turns.
-3. Stop on any assertion, crash, stuck turn, or empty AI production.
-4. Verify the new logs contain zero `AI_UNIT_RECONCILE` records and no
-   water-cache assertion.
-5. Verify each request commits no more units than its admitted outstanding
-   quantity after any economic withdrawal.
-
-After this focused retest passes, Wave 1 may clear its initialization and
-save/reload gate. A later mature multi-city test is still required before final
-MVP acceptance and the performance threshold remains unmeasured.
+The user explicitly authorized Wave 2 implementation without another isolated
+Wave 1 run. The tender repair therefore moved into the combined Wave 2
+fresh-game test instead of being treated as a prerequisite. Its focused
+confirmation criteria remain active in the Wave 2 verification checklist.
