@@ -42,6 +42,7 @@ void CvContractBroker::reset()
 	m_workRequests.clear();
 	m_productionDemands.clear();
 	m_outstandingProductionByRole.clear();
+	m_outstandingProductionByUnit.clear();
 	m_advertisingUnits.clear();
 	m_advertisingTenders.clear();
 	m_contractedUnits.clear();
@@ -108,6 +109,7 @@ void CvContractBroker::beginProductionDemandCycle()
 	PROFILE_EXTRA_FUNC();
 	m_productionDemands.clear();
 	m_outstandingProductionByRole.clear();
+	m_outstandingProductionByUnit.clear();
 }
 
 void CvContractBroker::changeOutstandingProduction(const AIUnitDemandKey& kKey, int iChange)
@@ -116,7 +118,7 @@ void CvContractBroker::changeOutstandingProduction(const AIUnitDemandKey& kKey, 
 	{
 		return;
 	}
-	const AIUnitDemandRoleIndex kIndex(kKey.eUnitAI, kKey.eScope, kKey.iScopeId);
+	const AIUnitDemandRoleIndex kIndex(kKey.eUnitAI, kKey.eMeasure, kKey.eScope, kKey.iScopeId);
 	m_outstandingProductionByRole[kIndex] += iChange;
 	FASSERT_NOT_NEGATIVE(m_outstandingProductionByRole[kIndex]);
 	if (m_outstandingProductionByRole[kIndex] < 0)
@@ -124,18 +126,35 @@ void CvContractBroker::changeOutstandingProduction(const AIUnitDemandKey& kKey, 
 		logBBAI("AI_UNIT_RECONCILE player=%d role=%d scope=%d scopeId=%d kind=production-pending cached=%d action=rebuild", (int)m_eOwner, (int)kKey.eUnitAI, (int)kKey.eScope, kKey.iScopeId, m_outstandingProductionByRole[kIndex]);
 		GET_PLAYER(m_eOwner).AI_noteUnitRecalcNeeded();
 	}
+	if (kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT && kKey.eUnit != NO_UNIT)
+	{
+		m_outstandingProductionByUnit[kKey.eUnit] += iChange;
+		FASSERT_NOT_NEGATIVE(m_outstandingProductionByUnit[kKey.eUnit]);
+		if (m_outstandingProductionByUnit[kKey.eUnit] < 0)
+		{
+			logBBAI("AI_UNIT_RECONCILE player=%d unit=%d kind=production-pending-exact cached=%d action=rebuild", (int)m_eOwner, (int)kKey.eUnit, m_outstandingProductionByUnit[kKey.eUnit]);
+			GET_PLAYER(m_eOwner).AI_noteUnitRecalcNeeded();
+		}
+	}
 }
 
-int CvContractBroker::getOutstandingProduction(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, int iScopeId) const
+int CvContractBroker::getOutstandingProduction(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId) const
 {
-	const AIUnitDemandRoleIndex kIndex(eUnitAI, eScope, iScopeId);
+	const AIUnitDemandRoleIndex kIndex(eUnitAI, eMeasure, eScope, iScopeId);
 	std::map<AIUnitDemandRoleIndex, int>::const_iterator it = m_outstandingProductionByRole.find(kIndex);
 	return it == m_outstandingProductionByRole.end() ? 0 : it->second;
+}
+
+int CvContractBroker::getOutstandingProduction(UnitTypes eUnit) const
+{
+	std::map<UnitTypes, int>::const_iterator it = m_outstandingProductionByUnit.find(eUnit);
+	return it == m_outstandingProductionByUnit.end() ? 0 : it->second;
 }
 
 bool CvContractBroker::validateProductionDemandIndexes() const
 {
 	std::map<AIUnitDemandRoleIndex, int> expected;
+	std::map<UnitTypes, int> expectedExact;
 	const CvPlayerAI& kOwner = GET_PLAYER(m_eOwner);
 
 	for (std::map<AIUnitDemandKey, AIProductionDemand>::const_iterator it = m_productionDemands.begin();
@@ -148,8 +167,12 @@ bool CvContractBroker::validateProductionDemandIndexes() const
 		}
 		if (kDemand.iOutstandingQuantity > 0 && kDemand.kKey.eUnitAI != NO_UNITAI)
 		{
-			expected[AIUnitDemandRoleIndex(kDemand.kKey.eUnitAI, kDemand.kKey.eScope, kDemand.kKey.iScopeId)]
+			expected[AIUnitDemandRoleIndex(kDemand.kKey.eUnitAI, kDemand.kKey.eMeasure, kDemand.kKey.eScope, kDemand.kKey.iScopeId)]
 				+= kDemand.iOutstandingQuantity;
+			if (kDemand.kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT && kDemand.kKey.eUnit != NO_UNIT)
+			{
+				expectedExact[kDemand.kKey.eUnit] += kDemand.iOutstandingQuantity;
+			}
 		}
 
 		const AIUnitRoleSupply kBase = kOwner.AI_getUnitDemandBaseSupply(kDemand.kKey);
@@ -183,6 +206,22 @@ bool CvContractBroker::validateProductionDemandIndexes() const
 			return false;
 		}
 	}
+	for (std::map<UnitTypes, int>::const_iterator it = expectedExact.begin(); it != expectedExact.end(); ++it)
+	{
+		std::map<UnitTypes, int>::const_iterator actualIt = m_outstandingProductionByUnit.find(it->first);
+		if (actualIt == m_outstandingProductionByUnit.end() || actualIt->second != it->second)
+		{
+			return false;
+		}
+	}
+	for (std::map<UnitTypes, int>::const_iterator it = m_outstandingProductionByUnit.begin();
+		it != m_outstandingProductionByUnit.end(); ++it)
+	{
+		if (it->second < 0 || (it->second != 0 && expectedExact.find(it->first) == expectedExact.end()))
+		{
+			return false;
+		}
+	}
 	return true;
 }
 
@@ -200,6 +239,14 @@ AIUnitDemandResult CvContractBroker::upsertProductionDemand(const AIUnitDemandKe
 		&& kExisting.kKey.iScopeId == kKey.iScopeId
 		&& !(kExisting.kKey == kKey))
 		{
+			const bool bDifferentExactUnit =
+				kExisting.kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT
+				&& kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT
+				&& kExisting.kKey.eUnit != kKey.eUnit;
+			if (bDifferentExactUnit)
+			{
+				continue;
+			}
 			changeOutstandingProduction(kExisting.kKey, -kExisting.iOutstandingQuantity);
 			kExisting.iOutstandingQuantity = 0;
 			kExisting.bInvalid = true;
@@ -277,9 +324,10 @@ AIUnitDemandResult CvContractBroker::upsertProductionDemand(const AIUnitDemandKe
 	{
 		const AIUnitRoleSupply kSupply = kOwner.AI_getUnitDemandBaseSupply(kKey);
 		logContractBroker(1,
-			"AI_UNIT_DEMAND turn=%d player=%d sourceCity=%d policy=%d role=%d scope=%d scopeId=%d desired=%d existing=%d training=%d pending=%d effective=%d deficit=%d economy=%d accepted=%d gated=%d reason=%d requestId=%d",
+			"AI_UNIT_DEMAND turn=%d player=%d sourceCity=%d policy=%d selector=%d role=%d unit=%d measure=%d scope=%d scopeId=%d desired=%d existing=%d training=%d pending=%d effective=%d deficit=%d economy=%d accepted=%d gated=%d reason=%d requestId=%d",
 			GC.getGame().getGameTurn(), m_eOwner, iSourceCityId, (int)kKey.ePolicy,
-			(int)kKey.eUnitAI, (int)kKey.eScope, kKey.iScopeId, iFullDesired,
+			(int)kKey.eSelector, (int)kKey.eUnitAI, (int)kKey.eUnit, (int)kKey.eMeasure,
+			(int)kKey.eScope, kKey.iScopeId, iFullDesired,
 			kSupply.iExisting, kSupply.iTraining, kDemand.iOutstandingQuantity,
 			kSupply.iExisting + kSupply.iTraining + kDemand.iOutstandingQuantity,
 			kResult.iRemainingDeficit,
@@ -756,11 +804,13 @@ void CvContractBroker::finalizeProductionDemands(std::vector<bool>& tenderUsed)
 			}
 
 			tenderUsed[iBestTenderIndex] = true;
-			changeOutstandingProduction(kDemand.kKey, -1);
-			kDemand.iOutstandingQuantity--;
+			const int iContribution = std::max(1, kOwner.AI_getUnitDemandUnitContribution(eBestUnit, kDemand.kKey.eMeasure));
+			const int iCommittedQuantity = std::min(kDemand.iOutstandingQuantity, iContribution);
+			changeOutstandingProduction(kDemand.kKey, -iCommittedQuantity);
+			kDemand.iOutstandingQuantity -= iCommittedQuantity;
 			if (gCityLogLevel >= 2 && gPlayerLogLevel >= 1)
 			{
-				logContractBroker(1, "AI_UNIT_DEMAND_FULFILL requestId=%d result=%d city=%d unit=%d pending=%d", kDemand.iRequestId, (int)AI_UNIT_DEMAND_FULFILLMENT_COMMITTED, pBestCity->getID(), (int)eBestUnit, kDemand.iOutstandingQuantity);
+				logContractBroker(1, "AI_UNIT_DEMAND_FULFILL requestId=%d result=%d city=%d unit=%d measure=%d contribution=%d pending=%d", kDemand.iRequestId, (int)AI_UNIT_DEMAND_FULFILLMENT_COMMITTED, pBestCity->getID(), (int)eBestUnit, (int)kDemand.kKey.eMeasure, iContribution, kDemand.iOutstandingQuantity);
 			}
 		}
 	}

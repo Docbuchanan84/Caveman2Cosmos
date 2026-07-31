@@ -15651,6 +15651,7 @@ bool CvCity::pushOrder(OrderTypes eOrder, int iData1, int iData2, bool bSave, bo
 				area()->changeNumTrainAIUnits(getOwner(), order.getUnitAIType(), 1);
 				owner.AI_changeNumTrainAIUnits(order.getUnitAIType(), 1);
 				owner.AI_changeWaterAreaTrainAIUnits(waterArea(), order.getUnitAIType(), 1);
+				owner.AI_changeMeasuredUnitDemandTraining(unitType, order.getUnitAIType(), this, 1);
 
 				CvEventReporter::getInstance().cityBuildingUnit(this, unitType);
 				setUnitListInvalid();
@@ -15875,6 +15876,7 @@ void CvCity::popOrder(int orderIndex, bool bFinish, bool bChoose, bool bResolveL
 			area()->changeNumTrainAIUnits(getOwner(), eTrainAIUnit, -1);
 			owner.AI_changeNumTrainAIUnits(eTrainAIUnit, -1);
 			owner.AI_changeWaterAreaTrainAIUnits(waterArea(), eTrainAIUnit, -1);
+			owner.AI_changeMeasuredUnitDemandTraining(eTrainUnit, eTrainAIUnit, this, -1);
 
 			setUnitListInvalid();
 
@@ -16572,6 +16574,9 @@ bool CvCity::doCheckProduction()
 				// Change the unit types in the queue
 				foreach_(OrderData& order, m_orderQueue | filtered(bind(matchUnitOrder, _1, unitType)))
 				{
+					const UnitTypes eOldUnit = order.getUnitType();
+					const UnitAITypes eOldUnitAI = order.getUnitAIType();
+					player.AI_changeMeasuredUnitDemandTraining(eOldUnit, eOldUnitAI, this, -1);
 					player.changeUnitMaking(order.getUnitType(), -1);
 					order.setUnitType(eUpgradeUnit);
 					if (player.AI_unitValue(eUpgradeUnit, order.getUnitAIType(), area()) == 0)
@@ -16585,6 +16590,7 @@ bool CvCity::doCheckProduction()
 						player.AI_changeWaterAreaTrainAIUnits(waterArea(), order.getUnitAIType(), 1);
 					}
 					player.changeUnitMaking(order.getUnitType(), 1);
+					player.AI_changeMeasuredUnitDemandTraining(order.getUnitType(), order.getUnitAIType(), this, 1);
 				}
 			}
 		}

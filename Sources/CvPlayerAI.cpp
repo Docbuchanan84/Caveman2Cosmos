@@ -389,6 +389,9 @@ void CvPlayerAI::AI_reset(bool bConstructor)
 	m_aiWaterAreaLiveUnitAICache.clear();
 	m_aiWaterAreaTrainUnitAICache.clear();
 	m_bWaterAreaUnitAICacheValid = false;
+	m_aiMeasuredUnitDemandLiveCache.clear();
+	m_aiMeasuredUnitDemandTrainCache.clear();
+	m_bMeasuredUnitDemandCacheValid = false;
 }
 
 
@@ -424,8 +427,13 @@ void CvPlayerAI::AI_doTurnPre()
 		{
 			FErrorMsg("Water-area UnitAI supplemental cache miscount");
 		}
+		if (m_bMeasuredUnitDemandCacheValid && !AI_validateMeasuredUnitDemandCache())
+		{
+			FErrorMsg("Measured AI unit demand cache miscount");
+		}
 #endif
 		AI_rebuildWaterAreaUnitAICache();
+		AI_rebuildMeasuredUnitDemandCache();
 	}
 
 	AI_updateUnitDemandEconomyCache();
@@ -12092,10 +12100,213 @@ void CvPlayerAI::AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAIT
 	m_aiWaterAreaLiveUnitAICache[iKey] = iNewValue;
 }
 
-AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const
+int CvPlayerAI::AI_getUnitDemandUnitContribution(UnitTypes eUnit, AIUnitDemandMeasureTypes eMeasure) const
+{
+	if (eUnit == NO_UNIT)
+	{
+		return 0;
+	}
+	const CvUnitInfo& kUnit = GC.getUnitInfo(eUnit);
+	switch (eMeasure)
+	{
+	case AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME:
+		return GC.getGame().isOption(GAMEOPTION_COMBAT_SIZE_MATTERS)
+			? intPow(3, std::max(0, kUnit.getBaseGroupRank() - 1))
+			: 1;
+	case AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY:
+		return std::max(0, GC.getGame().isOption(GAMEOPTION_COMBAT_SIZE_MATTERS)
+			? kUnit.getSMCargoSpace()
+			: kUnit.getCargoSpace());
+	case AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME:
+		return GC.getGame().isOption(GAMEOPTION_COMBAT_SIZE_MATTERS)
+			? std::max(1, kUnit.getBaseCargoVolume())
+			: 1;
+	default:
+		return 1;
+	}
+}
+
+int CvPlayerAI::AI_getUnitDemandLiveContribution(const CvUnit* pUnit, AIUnitDemandMeasureTypes eMeasure) const
+{
+	if (pUnit == NULL || pUnit->isTempUnit())
+	{
+		return 0;
+	}
+	switch (eMeasure)
+	{
+	case AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME:
+		return GC.getGame().isOption(GAMEOPTION_COMBAT_SIZE_MATTERS)
+			? intPow(3, std::max(0, pUnit->groupRank() - 1))
+			: 1;
+	case AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY:
+		return std::max(0, pUnit->cargoSpace());
+	case AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME:
+		return GC.getGame().isOption(GAMEOPTION_COMBAT_SIZE_MATTERS)
+			? std::max(1, pUnit->SMCargoVolume())
+			: 1;
+	default:
+		return 1;
+	}
+}
+
+void CvPlayerAI::AI_rebuildMeasuredUnitDemandCache()
+{
+	PROFILE_FUNC();
+	m_aiMeasuredUnitDemandLiveCache.clear();
+	m_aiMeasuredUnitDemandTrainCache.clear();
+
+	foreach_(const CvUnit * pLoopUnit, units())
+	{
+		const UnitAITypes eUnitAI = pLoopUnit->AI_getUnitAIType();
+		const CvPlot* pPlot = pLoopUnit->plot();
+		if (eUnitAI == NO_UNITAI || pLoopUnit->isTempUnit() || pPlot == NULL)
+		{
+			continue;
+		}
+		for (int iMeasure = AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME;
+			iMeasure < NUM_AI_UNIT_DEMAND_MEASURES; ++iMeasure)
+		{
+			const AIUnitDemandMeasureTypes eMeasure = (AIUnitDemandMeasureTypes)iMeasure;
+			const int iContribution = AI_getUnitDemandLiveContribution(pLoopUnit, eMeasure);
+			if (iContribution <= 0)
+			{
+				continue;
+			}
+			m_aiMeasuredUnitDemandLiveCache[AIUnitDemandSupplyIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_PLAYER, -1)] += iContribution;
+			const CvArea* pUnitArea = pLoopUnit->area();
+			if (pUnitArea != NULL)
+			{
+				m_aiMeasuredUnitDemandLiveCache[AIUnitDemandSupplyIndex(
+					eUnitAI, eMeasure,
+					pUnitArea->isWater() ? AI_UNIT_DEMAND_WATER_AREA : AI_UNIT_DEMAND_LAND_AREA,
+					pUnitArea->getID())] += iContribution;
+			}
+			const CvCity* pPlotCity = pPlot->getPlotCity();
+			const CvArea* pCoastalWater = pPlotCity == NULL ? NULL : pPlotCity->waterArea();
+			if (pCoastalWater != NULL)
+			{
+				m_aiMeasuredUnitDemandLiveCache[AIUnitDemandSupplyIndex(
+					eUnitAI, eMeasure, AI_UNIT_DEMAND_WATER_AREA, pCoastalWater->getID())] += iContribution;
+			}
+		}
+	}
+
+	foreach_(const CvCity * pLoopCity, cities())
+	{
+		for (int iOrder = 0; iOrder < pLoopCity->getNumOrdersQueued(); ++iOrder)
+		{
+			const OrderData kOrder = pLoopCity->getOrderAt(iOrder);
+			if (kOrder.eOrderType != ORDER_TRAIN || kOrder.getUnitAIType() == NO_UNITAI)
+			{
+				continue;
+			}
+			for (int iMeasure = AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME;
+				iMeasure < NUM_AI_UNIT_DEMAND_MEASURES; ++iMeasure)
+			{
+				const AIUnitDemandMeasureTypes eMeasure = (AIUnitDemandMeasureTypes)iMeasure;
+				const int iContribution = AI_getUnitDemandUnitContribution(kOrder.getUnitType(), eMeasure);
+				if (iContribution <= 0)
+				{
+					continue;
+				}
+				const UnitAITypes eUnitAI = kOrder.getUnitAIType();
+				m_aiMeasuredUnitDemandTrainCache[AIUnitDemandSupplyIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_PLAYER, -1)] += iContribution;
+				m_aiMeasuredUnitDemandTrainCache[AIUnitDemandSupplyIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_LAND_AREA, pLoopCity->getArea())] += iContribution;
+				const CvArea* pWaterArea = pLoopCity->waterArea();
+				if (pWaterArea != NULL)
+				{
+					m_aiMeasuredUnitDemandTrainCache[AIUnitDemandSupplyIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_WATER_AREA, pWaterArea->getID())] += iContribution;
+				}
+			}
+		}
+	}
+	m_bMeasuredUnitDemandCacheValid = true;
+}
+
+bool CvPlayerAI::AI_validateMeasuredUnitDemandCache() const
+{
+	if (!m_bMeasuredUnitDemandCacheValid)
+	{
+		return false;
+	}
+	const std::map<AIUnitDemandSupplyIndex, int> kLive = m_aiMeasuredUnitDemandLiveCache;
+	const std::map<AIUnitDemandSupplyIndex, int> kTrain = m_aiMeasuredUnitDemandTrainCache;
+	const_cast<CvPlayerAI*>(this)->AI_rebuildMeasuredUnitDemandCache();
+	const bool bValid = kLive == m_aiMeasuredUnitDemandLiveCache
+		&& kTrain == m_aiMeasuredUnitDemandTrainCache;
+	if (!bValid)
+	{
+		logBBAI("AI_UNIT_RECONCILE player=%d kind=measured-demand-cache action=rebuild", getID());
+	}
+	return bValid;
+}
+
+int CvPlayerAI::AI_getMeasuredUnitDemandSupply(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId, bool bTraining) const
+{
+	const std::map<AIUnitDemandSupplyIndex, int>& kCache =
+		bTraining ? m_aiMeasuredUnitDemandTrainCache : m_aiMeasuredUnitDemandLiveCache;
+	const std::map<AIUnitDemandSupplyIndex, int>::const_iterator it =
+		kCache.find(AIUnitDemandSupplyIndex(eUnitAI, eMeasure, eScope, iScopeId));
+	return it == kCache.end() ? 0 : it->second;
+}
+
+void CvPlayerAI::AI_changeMeasuredUnitDemandTraining(UnitTypes eUnit, UnitAITypes eUnitAI, const CvCity* pCity, int iChange)
+{
+	if (!m_bMeasuredUnitDemandCacheValid || eUnit == NO_UNIT || eUnitAI == NO_UNITAI || pCity == NULL || iChange == 0)
+	{
+		return;
+	}
+	for (int iMeasure = AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME;
+		iMeasure < NUM_AI_UNIT_DEMAND_MEASURES; ++iMeasure)
+	{
+		const AIUnitDemandMeasureTypes eMeasure = (AIUnitDemandMeasureTypes)iMeasure;
+		const int iContribution = AI_getUnitDemandUnitContribution(eUnit, eMeasure) * iChange;
+		if (iContribution == 0)
+		{
+			continue;
+		}
+		const AIUnitDemandSupplyIndex kPlayerIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_PLAYER, -1);
+		const AIUnitDemandSupplyIndex kLandIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_LAND_AREA, pCity->getArea());
+		m_aiMeasuredUnitDemandTrainCache[kPlayerIndex] += iContribution;
+		m_aiMeasuredUnitDemandTrainCache[kLandIndex] += iContribution;
+		const CvArea* pWaterArea = pCity->waterArea();
+		if (pWaterArea != NULL)
+		{
+			m_aiMeasuredUnitDemandTrainCache[AIUnitDemandSupplyIndex(eUnitAI, eMeasure, AI_UNIT_DEMAND_WATER_AREA, pWaterArea->getID())] += iContribution;
+		}
+		if (m_aiMeasuredUnitDemandTrainCache[kPlayerIndex] < 0
+			|| m_aiMeasuredUnitDemandTrainCache[kLandIndex] < 0)
+		{
+			logBBAI("AI_UNIT_RECONCILE player=%d role=%d measure=%d kind=measured-training action=invalidate", getID(), (int)eUnitAI, (int)eMeasure);
+			AI_noteUnitRecalcNeeded();
+			return;
+		}
+	}
+}
+
+AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea, AIUnitDemandMeasureTypes eMeasure) const
 {
 	AIUnitRoleSupply kResult;
 	int iScopeId = -1;
+
+	if (eMeasure != AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT)
+	{
+		if (eScope != AI_UNIT_DEMAND_PLAYER)
+		{
+			if (pArea == NULL
+			|| (eScope == AI_UNIT_DEMAND_LAND_AREA && pArea->isWater())
+			|| (eScope == AI_UNIT_DEMAND_WATER_AREA && !pArea->isWater()))
+			{
+				return kResult;
+			}
+			iScopeId = pArea->getID();
+		}
+		kResult.iExisting = AI_getMeasuredUnitDemandSupply(eUnitAI, eMeasure, eScope, iScopeId, false);
+		kResult.iTraining = AI_getMeasuredUnitDemandSupply(eUnitAI, eMeasure, eScope, iScopeId, true);
+		kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(eUnitAI, eMeasure, eScope, iScopeId);
+		kResult.iEffectiveSupply = kResult.iExisting + kResult.iTraining + kResult.iOutstandingProduction;
+		return kResult;
+	}
 
 	switch (eScope)
 	{
@@ -12132,7 +12343,7 @@ AIUnitRoleSupply CvPlayerAI::AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDem
 		break;
 	}
 
-	kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(eUnitAI, eScope, iScopeId);
+	kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(eUnitAI, eMeasure, eScope, iScopeId);
 	kResult.iEffectiveSupply = kResult.iExisting + kResult.iTraining + kResult.iOutstandingProduction;
 	return kResult;
 }
@@ -12153,13 +12364,13 @@ AIUnitRoleSupply CvPlayerAI::AI_getUnitDemandBaseSupply(const AIUnitDemandKey& k
 		}
 		kResult.iExisting = getUnitCount(kKey.eUnit);
 		kResult.iTraining = getUnitCountPlusMaking(kKey.eUnit) - kResult.iExisting;
-		kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(kKey.eUnitAI, kKey.eScope, kKey.iScopeId);
+		kResult.iOutstandingProduction = getContractBroker().getOutstandingProduction(kKey.eUnit);
 		kResult.iEffectiveSupply = kResult.iExisting + kResult.iTraining + kResult.iOutstandingProduction;
 		return kResult;
 	}
 
 	const CvArea* pArea = kKey.eScope == AI_UNIT_DEMAND_PLAYER ? NULL : GC.getMap().getArea(kKey.iScopeId);
-	return AI_getUnitRoleSupply(kKey.eUnitAI, kKey.eScope, pArea);
+	return AI_getUnitRoleSupply(kKey.eUnitAI, kKey.eScope, pArea, kKey.eMeasure);
 }
 
 void CvPlayerAI::AI_updateUnitDemandEconomyCache()
@@ -12228,6 +12439,14 @@ AIUnitDemandResult CvPlayerAI::AI_requestUnitDemandIfNeeded(CvCityAI* pRequestin
 	if (!kTarget.isValid())
 	{
 		kResult.eReason = AI_UNIT_DEMAND_ADMISSION_INVALID_TARGET;
+		return kResult;
+	}
+	if (kKey.eMeasure < AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT
+	|| kKey.eMeasure >= NUM_AI_UNIT_DEMAND_MEASURES
+	|| (kKey.eSelector == AI_UNIT_DEMAND_BY_EXACT_UNIT
+		&& kKey.eMeasure != AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT))
+	{
+		kResult.eReason = AI_UNIT_DEMAND_ADMISSION_INVALID_SELECTOR;
 		return kResult;
 	}
 	if (kKey.eSelector == AI_UNIT_DEMAND_BY_ROLE && kKey.eUnitAI == NO_UNITAI
@@ -35967,6 +36186,7 @@ void CvPlayerAI::AI_noteUnitRecalcNeeded()
 {
 	bUnitRecalcNeeded = true;
 	m_bWaterAreaUnitAICacheValid = false;
+	m_bMeasuredUnitDemandCacheValid = false;
 }
 
 void CvPlayerAI::AI_recalculateUnitCounts()
@@ -36011,6 +36231,7 @@ void CvPlayerAI::AI_recalculateUnitCounts()
 	}
 
 	AI_rebuildWaterAreaUnitAICache();
+	AI_rebuildMeasuredUnitDemandCache();
 
 	bUnitRecalcNeeded = false;
 }

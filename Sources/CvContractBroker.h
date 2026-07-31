@@ -53,12 +53,14 @@ struct AIUnitDemandRoleIndex
 {
 	AIUnitDemandRoleIndex()
 		: eUnitAI(NO_UNITAI)
+		, eMeasure(AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT)
 		, eScope(AI_UNIT_DEMAND_PLAYER)
 		, iScopeId(-1)
 	{}
 
-	AIUnitDemandRoleIndex(UnitAITypes eUnitAI_, AIUnitDemandScopeTypes eScope_, int iScopeId_)
+	AIUnitDemandRoleIndex(UnitAITypes eUnitAI_, AIUnitDemandMeasureTypes eMeasure_, AIUnitDemandScopeTypes eScope_, int iScopeId_)
 		: eUnitAI(eUnitAI_)
+		, eMeasure(eMeasure_)
 		, eScope(eScope_)
 		, iScopeId(iScopeId_)
 	{}
@@ -66,11 +68,13 @@ struct AIUnitDemandRoleIndex
 	bool operator<(const AIUnitDemandRoleIndex& kOther) const
 	{
 		if (eUnitAI != kOther.eUnitAI) return eUnitAI < kOther.eUnitAI;
+		if (eMeasure != kOther.eMeasure) return eMeasure < kOther.eMeasure;
 		if (eScope != kOther.eScope) return eScope < kOther.eScope;
 		return iScopeId < kOther.iScopeId;
 	}
 
 	UnitAITypes eUnitAI;
+	AIUnitDemandMeasureTypes eMeasure;
 	AIUnitDemandScopeTypes eScope;
 	int iScopeId;
 };
@@ -177,7 +181,8 @@ public:
 	void	advertiseWork(int iPriority, unitCapabilities eUnitFlags, int iAtX, int iAtY, const CvUnit* pJoinUnit, UnitAITypes eAIType = NO_UNITAI, int iUnitStrength = -1, const CvUnitSelectionCriteria* criteria = NULL, int iMaxPath = MAX_INT, ContractWorkRequestKindTypes eRequestKind = CONTRACT_WORK_REQUEST_PERSISTENT_OPERATIONAL, int iSourceCityId = -1);
 	void	beginProductionDemandCycle();
 	AIUnitDemandResult upsertProductionDemand(const AIUnitDemandKey& kKey, const AIUnitDemandTarget& kTarget, int iPriority, int iMaxUnitSpendingPercent, int iSourceCityId, int iBaseSupply);
-	int		getOutstandingProduction(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, int iScopeId) const;
+	int		getOutstandingProduction(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId) const;
+	int		getOutstandingProduction(UnitTypes eUnit) const;
 	int		getProductionDemandCount() const { return (int)m_productionDemands.size(); }
 	bool	validateProductionDemandIndexes() const;
 	//	Advertise a tender to build units
@@ -215,6 +220,7 @@ private:
 	std::vector<workRequest>		m_workRequests;
 	std::map<AIUnitDemandKey, AIProductionDemand> m_productionDemands;
 	std::map<AIUnitDemandRoleIndex, int> m_outstandingProductionByRole;
+	std::map<UnitTypes, int> m_outstandingProductionByUnit;
 	std::vector<advertisingUnit>	m_advertisingUnits;
 	std::vector<cityTender>			m_advertisingTenders;
 	std::map<int, bool>				m_contractedUnits;

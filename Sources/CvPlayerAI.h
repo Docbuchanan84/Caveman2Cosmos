@@ -296,7 +296,7 @@ public:
 	int AI_totalUnitAIs(UnitAITypes eUnitAI) const;
 	int AI_totalAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) const;
 	int AI_totalWaterAreaUnitAIs(const CvArea* pArea, UnitAITypes eUnitAI) const;
-	AIUnitRoleSupply AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const;
+	AIUnitRoleSupply AI_getUnitRoleSupply(UnitAITypes eUnitAI, AIUnitDemandScopeTypes eScope, const CvArea* pArea, AIUnitDemandMeasureTypes eMeasure = AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT) const;
 	int AI_getUnitRoleDeficit(UnitAITypes eUnitAI, int iDesired, AIUnitDemandScopeTypes eScope, const CvArea* pArea) const;
 	AIUnitRoleSupply AI_getUnitDemandBaseSupply(const AIUnitDemandKey& kKey) const;
 	AIUnitDemandResult AI_requestUnitDemandIfNeeded(CvCityAI* pRequestingCity, const AIUnitDemandKey& kKey, const AIUnitDemandTarget& kTarget, int iPriority, int iMaxUnitSpendingPercent, const CvUnitSelectionCriteria* pCriteria);
@@ -304,6 +304,12 @@ public:
 	AIUnitDemandEconomyStateTypes AI_getUnitDemandEconomyState(int iMaxUnitSpendingPercent) const;
 	int AI_getAllowedUnitDemandDesired(const AIUnitDemandTarget& kTarget, int iMaxUnitSpendingPercent) const;
 	bool AI_isUnitDemandClassAllowed(AIUnitDemandClassTypes eDemandClass, int iMaxUnitSpendingPercent) const;
+	int AI_getUnitDemandUnitContribution(UnitTypes eUnit, AIUnitDemandMeasureTypes eMeasure) const;
+	int AI_getUnitDemandLiveContribution(const CvUnit* pUnit, AIUnitDemandMeasureTypes eMeasure) const;
+	void AI_rebuildMeasuredUnitDemandCache();
+	bool AI_validateMeasuredUnitDemandCache() const;
+	int AI_getMeasuredUnitDemandSupply(UnitAITypes eUnitAI, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, int iScopeId, bool bTraining) const;
+	void AI_changeMeasuredUnitDemandTraining(UnitTypes eUnit, UnitAITypes eUnitAI, const CvCity* pCity, int iChange);
 	void AI_rebuildWaterAreaUnitAICache();
 	bool AI_validateWaterAreaUnitAICache() const;
 	void AI_changeWaterAreaLiveAIUnits(const CvArea* pWaterArea, UnitAITypes eUnitAI, int iChange);
@@ -694,6 +700,9 @@ protected:
 	std::map<int, int> m_aiWaterAreaLiveUnitAICache;
 	std::map<int, int> m_aiWaterAreaTrainUnitAICache;
 	bool m_bWaterAreaUnitAICacheValid;
+	std::map<AIUnitDemandSupplyIndex, int> m_aiMeasuredUnitDemandLiveCache;
+	std::map<AIUnitDemandSupplyIndex, int> m_aiMeasuredUnitDemandTrainCache;
+	bool m_bMeasuredUnitDemandCacheValid;
 
 	mutable volatile int m_iAveragesCacheTurn;
 

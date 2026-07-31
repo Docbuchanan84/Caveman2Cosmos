@@ -9,6 +9,7 @@
 // Temporary validation guard.  Undefine to route migrated city call sites
 // through their legacy Contract Broker advertisement path.
 #define USE_AI_UNIT_DEMAND_ACCOUNTING
+#define USE_AI_UNIT_DEMAND_WAVE2
 
 enum AIUnitDemandScopeTypes
 {
@@ -21,6 +22,53 @@ enum AIUnitDemandSelectorTypes
 {
 	AI_UNIT_DEMAND_BY_ROLE,
 	AI_UNIT_DEMAND_BY_EXACT_UNIT
+};
+
+enum AIUnitDemandMeasureTypes
+{
+	AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT,
+	AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME,
+	AI_UNIT_DEMAND_MEASURE_CARGO_CAPACITY,
+	AI_UNIT_DEMAND_MEASURE_CARGO_VOLUME,
+	NUM_AI_UNIT_DEMAND_MEASURES
+};
+
+struct AIUnitDemandSupplyIndex
+{
+	AIUnitDemandSupplyIndex()
+		: eUnitAI(NO_UNITAI)
+		, eMeasure(AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT)
+		, eScope(AI_UNIT_DEMAND_PLAYER)
+		, iScopeId(-1)
+	{}
+
+	AIUnitDemandSupplyIndex(UnitAITypes eUnitAI_, AIUnitDemandMeasureTypes eMeasure_, AIUnitDemandScopeTypes eScope_, int iScopeId_)
+		: eUnitAI(eUnitAI_)
+		, eMeasure(eMeasure_)
+		, eScope(eScope_)
+		, iScopeId(iScopeId_)
+	{}
+
+	bool operator<(const AIUnitDemandSupplyIndex& kOther) const
+	{
+		if (eUnitAI != kOther.eUnitAI) return eUnitAI < kOther.eUnitAI;
+		if (eMeasure != kOther.eMeasure) return eMeasure < kOther.eMeasure;
+		if (eScope != kOther.eScope) return eScope < kOther.eScope;
+		return iScopeId < kOther.iScopeId;
+	}
+
+	bool operator==(const AIUnitDemandSupplyIndex& kOther) const
+	{
+		return eUnitAI == kOther.eUnitAI
+			&& eMeasure == kOther.eMeasure
+			&& eScope == kOther.eScope
+			&& iScopeId == kOther.iScopeId;
+	}
+
+	UnitAITypes eUnitAI;
+	AIUnitDemandMeasureTypes eMeasure;
+	AIUnitDemandScopeTypes eScope;
+	int iScopeId;
 };
 
 enum AIUnitDemandClassTypes
@@ -137,6 +185,7 @@ struct AIUnitDemandKey
 		, eSelector(AI_UNIT_DEMAND_BY_ROLE)
 		, eUnitAI(NO_UNITAI)
 		, eUnit(NO_UNIT)
+		, eMeasure(AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT)
 		, eScope(AI_UNIT_DEMAND_PLAYER)
 		, iScopeId(-1)
 	{}
@@ -147,6 +196,7 @@ struct AIUnitDemandKey
 			&& eSelector == kOther.eSelector
 			&& eUnitAI == kOther.eUnitAI
 			&& eUnit == kOther.eUnit
+			&& eMeasure == kOther.eMeasure
 			&& eScope == kOther.eScope
 			&& iScopeId == kOther.iScopeId
 			&& criteria == kOther.criteria;
@@ -158,6 +208,7 @@ struct AIUnitDemandKey
 		if (eSelector != kOther.eSelector) return eSelector < kOther.eSelector;
 		if (eUnitAI != kOther.eUnitAI) return eUnitAI < kOther.eUnitAI;
 		if (eUnit != kOther.eUnit) return eUnit < kOther.eUnit;
+		if (eMeasure != kOther.eMeasure) return eMeasure < kOther.eMeasure;
 		if (eScope != kOther.eScope) return eScope < kOther.eScope;
 		if (iScopeId != kOther.iScopeId) return iScopeId < kOther.iScopeId;
 		return criteria < kOther.criteria;
@@ -167,6 +218,7 @@ struct AIUnitDemandKey
 	AIUnitDemandSelectorTypes eSelector;
 	UnitAITypes eUnitAI;
 	UnitTypes eUnit;
+	AIUnitDemandMeasureTypes eMeasure;
 	AIUnitDemandScopeTypes eScope;
 	int iScopeId;
 	CvUnitSelectionCriteria criteria;

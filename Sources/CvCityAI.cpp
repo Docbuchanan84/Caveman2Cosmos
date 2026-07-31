@@ -8868,6 +8868,15 @@ bool CvCityAI::AI_chooseUnit(const char* reason, UnitAITypes eUnitAI, int iOdds,
 
 bool CvCityAI::AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
 {
+	return AI_chooseUnitForMeasuredDemand(
+		reason, ePolicy, eUnitAI, kTarget,
+		AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT,
+		eScope, pArea, iOdds, iPriorityOverride, criteria
+	);
+}
+
+bool CvCityAI::AI_chooseUnitForMeasuredDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, AIUnitDemandMeasureTypes eMeasure, AIUnitDemandScopeTypes eScope, const CvArea* pArea, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
+{
 #if defined(USE_UNIT_TENDERING) && defined(USE_AI_UNIT_DEMAND_ACCOUNTING)
 	if (isNPC() || m_iRequestedUnit > MAX_REQUESTEDUNIT_PER_CITY)
 	{
@@ -8886,6 +8895,7 @@ bool CvCityAI::AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyType
 	kKey.ePolicy = ePolicy;
 	kKey.eSelector = AI_UNIT_DEMAND_BY_ROLE;
 	kKey.eUnitAI = eUnitAI;
+	kKey.eMeasure = eMeasure;
 	kKey.eScope = eScope;
 	kKey.iScopeId = pArea == NULL ? -1 : pArea->getID();
 	if (criteria != NULL)
@@ -8910,6 +8920,59 @@ bool CvCityAI::AI_chooseUnitForDemand(const char* reason, AIUnitDemandPolicyType
 #else
 	return AI_chooseUnit(reason, eUnitAI, iOdds, -1, iPriorityOverride, criteria);
 #endif
+}
+
+bool CvCityAI::AI_chooseExactUnitForDemand(const char* reason, AIUnitDemandPolicyTypes ePolicy, UnitTypes eUnit, UnitAITypes eUnitAI, const AIUnitDemandTarget& kTarget, int iOdds, int iPriorityOverride, const CvUnitSelectionCriteria* criteria)
+{
+#if defined(USE_UNIT_TENDERING) && defined(USE_AI_UNIT_DEMAND_ACCOUNTING) && defined(USE_AI_UNIT_DEMAND_WAVE2)
+	if (isNPC() || eUnit == NO_UNIT || m_iRequestedUnit > MAX_REQUESTEDUNIT_PER_CITY)
+	{
+		return false;
+	}
+	if (iOdds >= 0 && GC.getGame().getSorenRandNum(100, "City AI choose exact unit demand") >= iOdds)
+	{
+		return false;
+	}
+	if (iPriorityOverride == -1)
+	{
+		iPriorityOverride = m_iTempBuildPriority;
+	}
+
+	AIUnitDemandKey kKey;
+	kKey.ePolicy = ePolicy;
+	kKey.eSelector = AI_UNIT_DEMAND_BY_EXACT_UNIT;
+	kKey.eUnitAI = eUnitAI;
+	kKey.eUnit = eUnit;
+	kKey.eMeasure = AI_UNIT_DEMAND_MEASURE_OBJECT_COUNT;
+	kKey.eScope = AI_UNIT_DEMAND_PLAYER;
+	kKey.iScopeId = -1;
+	if (criteria != NULL)
+	{
+		kKey.criteria = *criteria;
+	}
+
+	AIUnitDemandResult kResult = GET_PLAYER(getOwner()).AI_requestUnitDemandIfNeeded(
+		this, kKey, kTarget, iPriorityOverride,
+		AI_evaluateMaxUnitSpending(), criteria
+	);
+	if (kResult.iAcceptedQuantity > 0 || kResult.eReason == AI_UNIT_DEMAND_ADMISSION_REFRESHED)
+	{
+		m_iRequestedUnit++;
+		return m_iRequestedBuilding > MAX_REQUESTEDBUILDING_PER_CITY;
+	}
+	return false;
+#else
+	return AI_chooseUnit(eUnit, eUnitAI);
+#endif
+}
+
+bool CvCityAI::AI_chooseUnitEconomicallyGated(const char* reason, UnitAITypes eUnitAI, AIUnitDemandClassTypes eDemandClass, int iOdds, const CvUnitSelectionCriteria* criteria)
+{
+	if (!isNPC() && !GET_PLAYER(getOwner()).AI_isUnitDemandClassAllowed(eDemandClass, AI_evaluateMaxUnitSpending()))
+	{
+		return false;
+	}
+	return AI_chooseUnit(reason, eUnitAI, iOdds, -1, -1, criteria);
 }
 
 bool CvCityAI::AI_chooseUnitImmediate(const char* reason, UnitAITypes eUnitAI, const CvUnitSelectionCriteria* criteria, UnitTypes eUnitType)
