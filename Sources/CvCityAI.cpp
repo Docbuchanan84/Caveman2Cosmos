@@ -2443,7 +2443,9 @@ void CvCityAI::AI_chooseProduction()
 		}
 		else
 		{
-			iStartAttackStackRand -= (iAttackCityCount + iAttackCount)*2;
+			const int iAttackCityEquivalentCount = iAttackCityCount / iAttackCityDemandUnitVolume;
+			const int iAttackEquivalentCount = iAttackCount / iAttackDemandUnitVolume;
+			iStartAttackStackRand -= (iAttackCityEquivalentCount + iAttackEquivalentCount) * 2;
 			//Calvitix Nerf if Peacefull Leader (Conquest Victory < 20)
 			if (bIsPeacefull)
 			{
@@ -2483,7 +2485,7 @@ void CvCityAI::AI_chooseProduction()
 					return;
 				}
 			}
-			else if (iAttackCount > 1 && iAttackCityCount == 0)
+			else if (iAttackCount > iAttackDemandUnitVolume && iAttackCityCount == 0)
 			{
 				if (AI_chooseUnitForMeasuredDemand("start city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
@@ -3917,7 +3919,7 @@ void CvCityAI::AI_chooseProduction()
 					return;
 				}
 			}
-			else if (iAttackCount > 1 && iAttackCityCount == 0)
+			else if (iAttackCount > iAttackDemandUnitVolume && iAttackCityCount == 0)
 			{
 				if (!bFinancialTrouble && AI_chooseUnitForMeasuredDemand("start city attack stack", AI_UNIT_DEMAND_POLICY_ATTACK_CITY, UNITAI_ATTACK_CITY, kAttackCityDemand, AI_UNIT_DEMAND_MEASURE_FORMATION_VOLUME, AI_UNIT_DEMAND_LAND_AREA, pArea))
 				{
