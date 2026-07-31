@@ -32,6 +32,17 @@ NPC/barbarian immediate production on their existing paths.
 Codex did not launch or advance the game. Runtime acceptance is assigned to the
 user playtest.
 
+Final pre-deployment build evidence:
+
+- Accounting foundation: `ab52ba23f6ad5b7e18b38c8dd079657d84b8a6d6`
+- Wave 2 migrations: `3676dc96b11ba27ec61cb09f512b6b4106a7b622`
+- Formation-heuristic normalization:
+  `938b7a993186d10770b17a95dc5add54a380e2a9`
+- Debug DLL SHA-256:
+  `1D9AA34FC7551F57035ED6327E84062028F56A11C7B64E4F2524A32DDF44A71A`
+- Release DLL SHA-256:
+  `58F256621DD84EF15C29236A0BDE3A49C55514C9D82EF238B6C03C65BDC7F799`
+
 ## Required combined playtest
 
 Use a fresh game with Size Matters enabled and logging enabled.
