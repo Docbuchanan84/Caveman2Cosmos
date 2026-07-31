@@ -42,6 +42,10 @@ Final pre-deployment build evidence:
   `1D9AA34FC7551F57035ED6327E84062028F56A11C7B64E4F2524A32DDF44A71A`
 - Release DLL SHA-256:
   `58F256621DD84EF15C29236A0BDE3A49C55514C9D82EF238B6C03C65BDC7F799`
+- The Debug DLL was deployed through the workspace `Assets` path and verified
+  byte-identical through the active GOG mod junction.
+- The previous Wave 1 DLL and both Wave 2 build configurations were preserved
+  under `D:\C2C-Backups\ai-unit-demand-wave2-20260730-193555`.
 
 ## Required combined playtest
 
